@@ -1,7 +1,7 @@
 import { Lock, Trash2, Unlock } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
-import { Alert, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
+import { Alert, askConfirm, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { ProjectPicker, useInstructorSelection } from "./shared";
 
@@ -37,7 +37,7 @@ export default function EvaluationRecords() {
   const isAdmin = user?.role === "admin";
 
   const act = async (id: string, action: "unlock" | "delete") => {
-    if (action === "delete" && !confirm("Permanently delete this evaluation record? This is logged in the audit trail.")) return;
+    if (action === "delete" && !(await askConfirm("Permanently delete this evaluation record? This is logged in the audit trail."))) return;
     try {
       await api(`/api/admin/evaluations/${id}${action === "unlock" ? "/unlock" : ""}`, { method: action === "unlock" ? "POST" : "DELETE" });
       setMsg(action === "unlock" ? "Record unlocked — the evaluator can now resubmit." : "Record deleted.");

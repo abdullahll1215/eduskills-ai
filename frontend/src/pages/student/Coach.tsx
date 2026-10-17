@@ -1,7 +1,7 @@
 import { Bot, Loader2, Send, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
-import { Alert, PageHeader, useFetch } from "../../components/ui";
+import { Alert, askConfirm, PageHeader, useFetch } from "../../components/ui";
 
 interface Msg {
   id?: string;
@@ -41,7 +41,7 @@ export default function Coach() {
   };
 
   const clear = async () => {
-    if (!confirm("Delete your chat history?")) return;
+    if (!(await askConfirm("Delete your chat history?"))) return;
     await api("/api/chat", { method: "DELETE" });
     setData([]);
   };

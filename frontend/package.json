@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:demo": "vite build --mode demo && node scripts/inline-demo.mjs"
   },
   "dependencies": {
     "lucide-react": "0.460.0",

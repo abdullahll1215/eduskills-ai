@@ -1,7 +1,8 @@
 import { Activity, BrainCircuit, Eye, LineChart, Loader2, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert } from "../components/ui";
+import { DEMO as IS_DEMO } from "../api/client";
+import { Alert, askConfirm } from "../components/ui";
 import { homeFor, useAuth } from "../context/AuthContext";
 
 const DEMO = [
@@ -96,6 +97,23 @@ export default function Login() {
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Demo accounts</div>
             <div className="mt-1 text-xs text-slate-400">Password: Password123!</div>
+            {IS_DEMO && (
+              <div className="mt-2 text-xs text-slate-500">
+                Online demo: everything runs in your browser and your changes are saved on this device only.{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-brand-600 underline"
+                  onClick={async () => {
+                    if (!(await askConfirm("Reset all demo data to the original sample cohort?"))) return;
+                    const { resetDB } = await import("../demo/store");
+                    resetDB();
+                    setError(null);
+                  }}
+                >
+                  Reset demo data
+                </button>
+              </div>
+            )}
             <div className="mt-3 grid gap-2">
               {DEMO.map((d) => (
                 <button

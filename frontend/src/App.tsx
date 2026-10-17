@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import { Loading } from "./components/ui";
+import { DialogHost, Loading } from "./components/ui";
 import { homeFor, useAuth } from "./context/AuthContext";
 import AdminAudit from "./pages/admin/Audit";
 import AdminHealth from "./pages/admin/Health";
@@ -36,6 +36,8 @@ export default function App() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
   return (
+    <>
+    <DialogHost />
     <Routes>
       <Route path="/login" element={user ? <Navigate to={homeFor(user.role)} replace /> : <Login />} />
       <Route element={<Guard><Layout /></Guard>}>
@@ -66,5 +68,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to={user ? homeFor(user.role) : "/login"} replace />} />
     </Routes>
+    </>
   );
 }

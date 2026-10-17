@@ -2,7 +2,7 @@ import { Lock } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
-import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
 import { MilestoneTabs, RatingSlider, useStudentMilestone } from "./shared";
 
 interface SelfData {
@@ -49,7 +49,7 @@ export default function SelfAssessment() {
       setMsg({ kind: "error", text: `Please rate every skill (missing: ${missing.map((m) => m.skill_name).join(", ")}).` });
       return;
     }
-    if (!confirm("Once submitted, your self-assessment is locked and cannot be changed. Submit now?")) return;
+    if (!(await askConfirm("Once submitted, your self-assessment is locked and cannot be changed. Submit now?"))) return;
     setBusy(true);
     try {
       await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings, evidence, evidence_link: link || null } });

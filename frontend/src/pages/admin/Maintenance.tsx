@@ -1,7 +1,7 @@
 import { CheckCircle2, HardDriveDownload, Loader2, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
-import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
 
 interface Backup {
   id: string;
@@ -30,7 +30,7 @@ export default function Maintenance() {
   };
 
   const purge = async () => {
-    if (!confirm("Run the data-retention purge? Chat history, notifications and audit logs older than the retention window will be permanently deleted.")) return;
+    if (!(await askConfirm("Run the data-retention purge? Chat history, notifications and audit logs older than the retention window will be permanently deleted."))) return;
     const r = await api<{ retention_days: number; deleted: Record<string, number | string> }>("/api/admin/retention/purge", { method: "POST" });
     const counts = Object.entries(r.deleted).filter(([k]) => k !== "cutoff").map(([k, v]) => `${k}: ${v}`).join(", ");
     setMsg({ kind: "info", text: `Retention purge complete (${r.retention_days} days). Deleted — ${counts}.` });

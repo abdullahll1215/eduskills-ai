@@ -2,7 +2,7 @@ import { Plus, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api } from "../../api/client";
 import type { Milestone, User } from "../../api/types";
-import { Alert, Empty, Loading, Modal, PageHeader, useFetch } from "../../components/ui";
+import { Alert, askConfirm, askText, Empty, Loading, Modal, PageHeader, useFetch } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 
 interface ProjectFull {
@@ -88,7 +88,7 @@ export default function Projects() {
                 <button className="btn-outline" onClick={() => run(() => api(`/api/projects/${project.id}`, { method: "PUT", body: { title: project.title, description: project.description, is_active: !project.is_active, instructor_id: project.instructor?.id } }), "Project updated.")}>
                   {project.is_active ? "Deactivate" : "Activate"}
                 </button>
-                <button className="btn-ghost text-red-600" onClick={() => confirm(`Delete "${project.title}" and all its evaluations?`) && run(() => api(`/api/projects/${project.id}`, { method: "DELETE" }), "Project deleted.")}>
+                <button className="btn-ghost text-red-600" onClick={async () => (await askConfirm(`Delete "${project.title}" and all its evaluations?`)) && run(() => api(`/api/projects/${project.id}`, { method: "DELETE" }), "Project deleted.")}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -114,7 +114,7 @@ export default function Projects() {
                         </select>
                       </td>
                       <td className="td text-right">
-                        <button className="btn-ghost p-1.5 text-red-500" onClick={() => confirm(`Delete M${m.number}?`) && run(() => api(`/api/projects/milestones/${m.id}`, { method: "DELETE" }), "Milestone deleted.")}><Trash2 className="h-4 w-4" /></button>
+                        <button className="btn-ghost p-1.5 text-red-500" onClick={async () => (await askConfirm(`Delete M${m.number}?`)) && run(() => api(`/api/projects/milestones/${m.id}`, { method: "DELETE" }), "Milestone deleted.")}><Trash2 className="h-4 w-4" /></button>
                       </td>
                     </tr>
                   ))}
@@ -123,9 +123,9 @@ export default function Projects() {
             </div>
             <button
               className="btn-outline mt-3"
-              onClick={() => {
+              onClick={async () => {
                 const n = Math.max(0, ...project.milestones.map((m) => m.number)) + 1;
-                const name = prompt(`Name for milestone M${n}:`, "Final Delivery");
+                const name = await askText(`Name for milestone M${n}:`, "Final Delivery");
                 if (name) run(() => api(`/api/projects/${project.id}/milestones`, { body: { number: n, name, status: "planned" } }), "Milestone added.");
               }}
             >
@@ -140,7 +140,7 @@ export default function Projects() {
                   <h3 className="font-semibold text-slate-900">{t.team_name} <span className="text-xs font-normal text-slate-400">({t.members.length} members)</span></h3>
                   <div className="flex gap-1">
                     <button className="btn-ghost p-1.5" title="Add member" onClick={() => setEnrollTeam(t.id)}><UserPlus className="h-4 w-4" /></button>
-                    <button className="btn-ghost p-1.5 text-red-500" title="Delete team" onClick={() => confirm(`Delete ${t.team_name}?`) && run(() => api(`/api/projects/teams/${t.id}`, { method: "DELETE" }), "Team deleted.")}><Trash2 className="h-4 w-4" /></button>
+                    <button className="btn-ghost p-1.5 text-red-500" title="Delete team" onClick={async () => (await askConfirm(`Delete ${t.team_name}?`)) && run(() => api(`/api/projects/teams/${t.id}`, { method: "DELETE" }), "Team deleted.")}><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
                 {t.members.length < 4 && <p className="mt-1 text-xs text-amber-600">Anonymous peer evaluation needs at least 4 members (3 peers each).</p>}

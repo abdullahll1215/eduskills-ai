@@ -2,7 +2,7 @@ import { Pencil, Plus, UserX } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api } from "../../api/client";
 import type { User } from "../../api/types";
-import { Alert, Loading, Modal, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { Alert, askConfirm, Loading, Modal, PageHeader, fmtDate, useFetch } from "../../components/ui";
 
 type Form = { id?: string; full_name: string; email: string; role: string; password: string; student_number: string; level: string; mobile: string; department: string; is_active: boolean };
 const EMPTY: Form = { full_name: "", email: "", role: "student", password: "", student_number: "", level: "", mobile: "", department: "", is_active: true };
@@ -30,7 +30,7 @@ export default function Users() {
   };
 
   const deactivate = async (u: User) => {
-    if (!confirm(`Deactivate ${u.full_name}?`)) return;
+    if (!(await askConfirm(`Deactivate ${u.full_name}?`))) return;
     try {
       await api(`/api/admin/users/${u.id}`, { method: "DELETE" });
       reload();

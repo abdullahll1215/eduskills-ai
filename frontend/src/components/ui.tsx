@@ -164,3 +164,75 @@ export function initials(name: string) {
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+// ---------------------------------------------------------------- in-page dialogs --
+// window.confirm/prompt are blocked in sandboxed frames, so confirmations are rendered in the page.
+
+type DialogRequest = { kind: "confirm" | "prompt" | "file"; message: string; value?: string; title?: string; resolve: (v: string | boolean | null) => void };
+let pushDialog: ((d: DialogRequest) => void) | null = null;
+
+export function askConfirm(message: string): Promise<boolean> {
+  return new Promise((resolve) => (pushDialog ? pushDialog({ kind: "confirm", message, resolve: (v) => resolve(v === true) }) : resolve(true)));
+}
+
+export function askText(message: string, value = ""): Promise<string | null> {
+  return new Promise((resolve) => (pushDialog ? pushDialog({ kind: "prompt", message, value, resolve: (v) => resolve(typeof v === "string" ? v : null) }) : resolve(value)));
+}
+
+/** Shows a generated file (CSV) in a dialog where downloads are not possible. */
+export function showFile(title: string, content: string) {
+  pushDialog?.({ kind: "file", title, message: "", value: content, resolve: () => undefined });
+}
+
+export function DialogHost() {
+  const [req, setReq] = useState<DialogRequest | null>(null);
+  const [text, setText] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    pushDialog = (d) => {
+      setText(d.value ?? "");
+      setCopied(false);
+      setReq(d);
+    };
+    return () => {
+      pushDialog = null;
+    };
+  }, []);
+  if (!req) return null;
+  const close = (v: string | boolean | null) => {
+    req.resolve(v);
+    setReq(null);
+  };
+  if (req.kind === "file") {
+    const rows = (req.value ?? "").trim().split("\n").map((r) => r.split(","));
+    return (
+      <Modal open title={req.title ?? "File"} onClose={() => close(null)}
+        footer={<>
+          <button className="btn-outline" onClick={() => navigator.clipboard?.writeText(req.value ?? "").then(() => setCopied(true)).catch(() => setCopied(false))}>{copied ? "Copied" : "Copy CSV"}</button>
+          <button className="btn-primary" onClick={() => close(null)}>Close</button>
+        </>}>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-xs">
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className={i === 0 ? "bg-slate-50 font-semibold" : "border-t border-slate-100"}>
+                  {r.map((c, j) => <td key={j} className="whitespace-nowrap px-2 py-1.5">{c}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
+    );
+  }
+  return (
+    <Modal open title={req.kind === "confirm" ? "Please confirm" : "Enter a value"} onClose={() => close(req.kind === "confirm" ? false : null)}
+      footer={<>
+        <button className="btn-ghost" onClick={() => close(req.kind === "confirm" ? false : null)}>Cancel</button>
+        <button className="btn-primary" onClick={() => close(req.kind === "confirm" ? true : text)}>{req.kind === "confirm" ? "Confirm" : "OK"}</button>
+      </>}>
+      <p className="text-sm text-slate-700">{req.message}</p>
+      {req.kind === "prompt" && <input className="input mt-3" value={text} onChange={(e) => setText(e.target.value)} autoFocus />}
+    </Modal>
+  );
+}
