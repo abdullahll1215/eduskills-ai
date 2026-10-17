@@ -176,3 +176,22 @@ def test_profile_update(client):
     h = login(client, "omar@student.kfu.edu.sa")
     r = client.put("/api/auth/me", headers=h, json={"mobile": "0500000000"})
     assert r.json()["mobile"] == "0500000000"
+
+
+def test_student_self_registration(client):
+    options = client.get("/api/auth/signup-options").json()
+    team = options[0]["teams"][0]
+    body = {"full_name": "New Student", "email": "new.student@student.kfu.edu.sa", "password": "Secret123!", "student_number": "223000001", "team_id": team["id"]}
+    r = client.post("/api/auth/register", json=body)
+    assert r.status_code == 201 and r.json()["user"]["role"] == "student"
+    assert client.post("/api/auth/register", json=body).status_code == 409  # duplicate email
+    h = login_as(client, "new.student@student.kfu.edu.sa", "Secret123!")
+    projects = client.get("/api/student/projects", headers=h).json()
+    assert projects and projects[0]["team"]["id"] == team["id"]
+    r = client.post("/api/auth/register", json={**body, "email": "x@kfu.edu.sa", "password": "short"})
+    assert r.status_code == 422
+
+
+def login_as(client, email, password):
+    r = client.post("/api/auth/login", json={"email": email, "password": password})
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}

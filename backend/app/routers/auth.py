@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Competency, Notification, User, utcnow
-from ..schemas import LoginIn, PasswordIn, ProfileIn
+from ..models import Competency, Enrollment, Notification, Project, Role, Team, User, utcnow
+from ..schemas import LoginIn, PasswordIn, ProfileIn, RegisterIn
 from ..security import create_access_token, hash_password, verify_password
 from ..services import audit
 from ..services.common import competency_out, user_out
@@ -22,6 +22,45 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(403, "This account has been disabled")
     user.last_login_at = utcnow()
     audit.log(db, user, "auth.login", "user", user.id)
+    db.commit()
+    return {"access_token": create_access_token(user.id, user.role), "token_type": "bearer", "user": user_out(user)}
+
+
+@router.get("/auth/signup-options")
+def signup_options(db: Session = Depends(get_db)):
+    """Active projects and their teams, so a new student can join a team while signing up."""
+    return [
+        {"id": p.id, "title": p.title, "teams": [{"id": t.id, "team_name": t.team_name} for t in p.teams]}
+        for p in db.scalars(select(Project).where(Project.is_active.is_(True)).order_by(Project.title))
+    ]
+
+
+@router.post("/auth/register", status_code=201)
+def register(body: RegisterIn, db: Session = Depends(get_db)):
+    """Self-registration is for students only; staff accounts are created by an administrator."""
+    email = body.email.lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, "An account with this email already exists. Sign in instead.")
+    team = None
+    if body.team_id:
+        team = db.get(Team, body.team_id)
+        if not team or not team.project.is_active:
+            raise HTTPException(400, "The selected team is not available")
+    user = User(
+        full_name=body.full_name.strip(),
+        email=email,
+        role=Role.STUDENT.value,
+        password_hash=hash_password(body.password),
+        student_number=(body.student_number or "").strip() or None,
+        last_login_at=utcnow(),
+    )
+    db.add(user)
+    db.flush()
+    if team:
+        db.add(Enrollment(user_id=user.id, project_id=team.project_id, team_id=team.id))
+        if team.project.instructor_id:
+            audit.notify(db, team.project.instructor_id, f"New student joined {team.team_name}", user.full_name, "info", "/instructor/projects")
+    audit.log(db, user, "auth.registered", "user", user.id, f"team={team.team_name if team else '-'}")
     db.commit()
     return {"access_token": create_access_token(user.id, user.role), "token_type": "bearer", "user": user_out(user)}
 

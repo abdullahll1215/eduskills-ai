@@ -78,6 +78,26 @@ route("POST", "/api/auth/login", ({ db, body }) => {
   log(db, u!.id, "auth.login", "user", u!.id);
   return { access_token: u!.id, token_type: "bearer", user: userOut(u) };
 }, false);
+route("GET", "/api/auth/signup-options", ({ db }) =>
+  db.projects.filter((p) => p.is_active).map((p) => ({ id: p.id, title: p.title, teams: db.teams.filter((t) => t.project_id === p.id).map((t) => ({ id: t.id, team_name: t.team_name })) })), false);
+route("POST", "/api/auth/register", ({ db, body }) => {
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const name = String(body.full_name ?? "").trim();
+  if (name.length < 2) fail(422, "Please enter your full name");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(422, "Please enter a valid email address");
+  if (String(body.password ?? "").length < 8) fail(422, "The password must have at least 8 characters");
+  if (db.users.some((u) => u.email === email)) fail(409, "An account with this email already exists. Sign in instead.");
+  const team = body.team_id ? db.teams.find((t) => t.id === body.team_id) ?? fail(400, "The selected team is not available") : null;
+  const u = { id: uid(), full_name: name, email, role: "student", student_number: String(body.student_number ?? "").trim() || null, level: null, mobile: null, department: null, is_active: true, created_at: nowIso(), last_login_at: nowIso(), password: body.password };
+  db.users.push(u);
+  if (team) {
+    db.enrollments.push({ id: uid(), user_id: u.id, project_id: team.project_id, team_id: team.id });
+    const ins = db.projects.find((p) => p.id === team.project_id)?.instructor_id;
+    if (ins) notify(db, ins, `New student joined ${team.team_name}`, name, "info", "/instructor/projects");
+  }
+  log(db, u.id, "auth.registered", "user", u.id, `team=${team?.team_name ?? "-"}`);
+  return { access_token: u.id, token_type: "bearer", user: userOut(u) };
+}, false);
 route("GET", "/api/auth/me", ({ user }) => userOut(user));
 route("PUT", "/api/auth/me", ({ db, user, body }) => {
   for (const k of ["full_name", "mobile", "level", "department"]) if (body[k] !== undefined) user[k] = body[k];
@@ -755,7 +775,7 @@ export async function handle(method: string, url: string, token: string | null, 
       if (auth && !user) fail(401, "Not authenticated");
       const p = Object.fromEntries(keys.map((k, i) => [k, decodeURIComponent(match[i + 1])]));
       const data = h({ db, user, p, q: u.searchParams, body: body ?? {} });
-      if (method !== "GET" || u.pathname === "/api/auth/login") saveDB();
+      if (method !== "GET") saveDB();
       return { status: 200, data };
     }
     return { status: 404, data: { detail: "Not found" } };

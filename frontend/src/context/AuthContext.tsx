@@ -2,10 +2,19 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useState 
 import { api, getToken, setToken } from "../api/client";
 import type { User } from "../api/types";
 
+export interface RegisterData {
+  full_name: string;
+  email: string;
+  password: string;
+  student_number?: string;
+  team_id?: string | null;
+}
+
 interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  register: (data: RegisterData) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -43,12 +52,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.user;
   };
 
+  const register = async (data: RegisterData) => {
+    const res = await api<{ access_token: string; user: User }>("/api/auth/register", { body: data });
+    setToken(res.access_token);
+    setUser(res.user);
+    return res.user;
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
   };
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, login, register, logout, refresh }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
