@@ -16,7 +16,7 @@ export default function Coach() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
-  const messages = data ?? [];
+  const messages = (Array.isArray(data) ? data : []).filter((m) => m && typeof m.content === "string");
 
   useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth" }), [messages.length]);
 

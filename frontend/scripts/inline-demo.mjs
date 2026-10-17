@@ -19,4 +19,8 @@ html,body{background:#f8fafc;color:#0f172a}</style>
 `;
 mkdirSync("demo", { recursive: true });
 writeFileSync("demo/eduskills-demo.html", html);
+// Full HTML document for GitHub Pages (docs/index.html, published on the gh-pages branch).
+const page = html.replace("<title>", '<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>').replace('<div id="root"></div>', '</head>\n<body>\n<div id="root"></div>');
+mkdirSync("../docs", { recursive: true });
+writeFileSync("../docs/index.html", `<!doctype html>\n<html lang="en">\n<head>\n${page}</body>\n</html>\n`);
 console.log(`demo/eduskills-demo.html ${(html.length / 1024).toFixed(0)} KB`);

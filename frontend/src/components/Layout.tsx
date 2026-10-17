@@ -24,6 +24,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import ErrorBoundary from "./ErrorBoundary";
 import { fmtDate, initials } from "./ui";
 
 type NavItem = { to: string; label: string; icon: ReactNode; end?: boolean };
@@ -207,7 +208,9 @@ export default function Layout() {
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

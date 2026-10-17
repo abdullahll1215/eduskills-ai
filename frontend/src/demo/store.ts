@@ -27,7 +27,11 @@ export function getDB(): DemoDB {
   if (cache) return cache;
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) cache = JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Ignore saved data from an older or broken version of the demo.
+      if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.chat) && Array.isArray(parsed.evaluations)) cache = parsed;
+    }
   } catch {
     /* storage unavailable */
   }
