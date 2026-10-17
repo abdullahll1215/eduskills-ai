@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: eduskills
+      POSTGRES_PASSWORD: eduskills
+      POSTGRES_DB: eduskills
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eduskills"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://eduskills:eduskills@db:5432/eduskills
+      SECRET_KEY: ${SECRET_KEY:-please-change-this-secret}
+      ANONYMIZATION_SALT: ${ANONYMIZATION_SALT:-please-change-this-salt}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+    volumes:
+      - backups:/app/backend/data/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  backups:
