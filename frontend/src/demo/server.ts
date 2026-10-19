@@ -5,6 +5,7 @@ import {
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
 } from "./logic";
 import { sha256 } from "./sha256";
+import { aiConfig, chatCompletion } from "./ai";
 
 class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -162,7 +163,7 @@ route("GET", "/api/student/self-assessment", ({ db, user, q }) => {
   const ev = db.evaluations.find((e) => e.milestone_id === m.id && e.target_id === user.id && e.eval_type === "self");
   return { milestone: msOut(m), competencies: competencies(db).map(compOut), submission: ev ? { id: ev.id, ratings: ev.ratings, evidence: ev.comment ?? "", evidence_link: ev.evidence_link, created_at: ev.created_at, is_locked: ev.is_locked } : null };
 });
-route("POST", "/api/student/self-assessment", ({ db, user, body }) => {
+route("POST", "/api/student/self-assessment", async ({ db, user, body }) => {
   studentOnly(user);
   const { m } = msForStudent(db, user, body.milestone_id);
   isOpen(m);
@@ -173,7 +174,7 @@ route("POST", "/api/student/self-assessment", ({ db, user, body }) => {
   const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: user.id, target_id: user.id, eval_type: "self", reviewer_key: "self", comment: (body.evidence ?? "").trim() || null, evidence_link: body.evidence_link ?? null, notes: null, sentiment: null, is_flagged: false, flag_reason: null, moderation_status: "none", is_locked: true, created_at: nowIso(), ratings };
   db.evaluations.push(ev);
   log(db, user.id, "evaluation.self_submitted", "evaluation", ev.id, `milestone=M${m.number}`);
-  generateReport(db, user.id, m.id);
+  await generateReport(db, user.id, m.id);
   return { id: ev.id, created_at: ev.created_at, message: "Self-assessment submitted and locked" };
 });
 route("GET", "/api/student/peers", ({ db, user, q }) => {
@@ -187,7 +188,7 @@ route("GET", "/api/student/peers", ({ db, user, q }) => {
   return { milestone: msOut(m), team_size_ok: mates.length >= c.minPeers, min_peers: c.minPeers, competencies: competencies(db).map(compOut), peers: mates.map((t) => ({ id: t.id, full_name: t.full_name, evaluated: done.has(t.id), available: selfDone.has(t.id) || !c.selfFirst })) };
 });
 route("POST", "/api/student/peer-check", ({ body }) => contentFilter(body.comment ?? ""));
-route("POST", "/api/student/peer-evaluations", ({ db, user, body }) => {
+route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
   studentOnly(user);
   const { m, enr } = msForStudent(db, user, body.milestone_id);
   isOpen(m);
@@ -209,7 +210,7 @@ route("POST", "/api/student/peer-evaluations", ({ db, user, body }) => {
   const proj = db.projects.find((x) => x.id === m.project_id)!;
   if (v.is_toxic) proj.instructor_id && notify(db, proj.instructor_id, "Peer feedback flagged for review", v.reason ?? "", "moderation", "/instructor");
   else notify(db, body.target_id, "You received new anonymous peer feedback", `Milestone M${m.number}`, "feedback", "/student");
-  generateReport(db, body.target_id, m.id);
+  await generateReport(db, body.target_id, m.id);
   return { id: ev.id, flagged: v.is_toxic, message: v.is_toxic ? "Your comment was flagged by the AI content filter and held for instructor review. Your ratings were recorded." : "Peer evaluation submitted anonymously" };
 });
 route("GET", "/api/student/feedback", ({ db, user, q }) => {
@@ -309,12 +310,40 @@ function chatReply(db: DemoDB, user: any, msg: string) {
     : `Your largest perception gap is in ${name(worst.competency_id)}: you rated yourself ${worst.self_score} while others rated you ${worst.external_avg.toFixed(1)} (delta ${worst.gap_score.toFixed(1)}).\nSuggested next steps:\n${steps}`;
 }
 route("GET", "/api/chat", ({ db, user }) => db.chat.filter((c) => c.user_id === user.id));
-route("POST", "/api/chat", ({ db, user, body }) => {
-  const reply = chatReply(db, user, String(body.message ?? ""));
+const CHAT_SYSTEM = `You are EduSkills Coach, a friendly soft-skills mentor inside a university platform.
+Answer the student's question using ONLY their data below and general, well-established soft-skills advice.
+Never reveal peer identities. Keep answers under 180 words. Reply in the same language the student uses (Arabic or English).`;
+
+function studentContext(db: DemoDB, user: any) {
+  const rep = db.reports.filter((r) => r.student_id === user.id).sort((a, b) => b.generated_at.localeCompare(a.generated_at))[0];
+  if (!rep) return `Name: ${user.full_name}. No completed 360-degree report yet.`;
+  const m = db.milestones.find((x) => x.id === rep.milestone_id)!;
+  const lines = [`Name: ${user.full_name}. Latest report: M${m.number} (${m.name}).`];
+  for (const d of rep.metrics) lines.push(`${db.competencies.find((c) => c.id === d.competency_id)!.skill_name}: self ${d.self_score}, external ${d.external_avg}, delta ${d.gap_score}, ${d.level}, ${d.direction}`);
+  lines.push("Report headline: " + (rep.content.headline ?? ""));
+  lines.push("Actionable steps: " + (rep.content.actionable_steps ?? []).join("; "));
+  return lines.join("\n");
+}
+
+route("POST", "/api/chat", async ({ db, user, body }) => {
+  const message = String(body.message ?? "");
+  const cfg = aiConfig(db);
+  let reply = "";
+  let source = "fallback";
+  if (cfg.usable) {
+    try {
+      const history = db.chat.filter((c) => c.user_id === user.id).slice(-8).map((c) => ({ role: c.role, content: c.content }));
+      reply = (await chatCompletion(cfg, CHAT_SYSTEM + "\n\nStudent data:\n" + studentContext(db, user), [...history, { role: "user", content: message }], false, 500)).trim();
+      source = "ai";
+    } catch (e) {
+      console.warn("Chat AI unavailable:", e);
+    }
+  }
+  if (!reply) reply = chatReply(db, user, message);
   db.chat.push({ id: uid(), user_id: user.id, role: "user", content: body.message, created_at: nowIso() });
   const m = { id: uid(), user_id: user.id, role: "assistant", content: reply, created_at: nowIso() };
   db.chat.push(m);
-  return { ...m, source: "fallback" };
+  return { ...m, source };
 });
 route("DELETE", "/api/chat", ({ db, user }) => {
   db.chat = db.chat.filter((c) => c.user_id !== user.id);
@@ -405,7 +434,7 @@ route("GET", "/api/instructor/students/:sid", ({ db, user, p: params, q }) => {
     warning_threshold: c.warn,
   };
 });
-route("POST", "/api/instructor/evaluations", ({ db, user, body }) => {
+route("POST", "/api/instructor/evaluations", async ({ db, user, body }) => {
   const m = need(db.milestones.find((x) => x.id === body.milestone_id), "Milestone");
   const p = projFor(db, user, m.project_id);
   if (m.status === "planned") fail(409, "This milestone has not started yet");
@@ -423,16 +452,16 @@ route("POST", "/api/instructor/evaluations", ({ db, user, body }) => {
   const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: user.id, target_id: body.target_id, eval_type: "instructor", reviewer_key: "instructor", comment: null, evidence_link: null, notes: (body.notes ?? "").trim(), sentiment: null, is_flagged: false, flag_reason: null, moderation_status: "none", is_locked: true, created_at: nowIso(), ratings };
   db.evaluations.push(ev);
   log(db, user.id, "evaluation.instructor_submitted", "evaluation", ev.id, `milestone=M${m.number} warnings=${warnings.length}`);
-  generateReport(db, body.target_id, m.id, true);
+  await generateReport(db, body.target_id, m.id, true);
   return { saved: true, warnings, external: snapshot(db, body.target_id, m.id, c).oExt, id: ev.id };
 });
-route("POST", "/api/instructor/moderation/:id", ({ db, user, p, body }) => {
+route("POST", "/api/instructor/moderation/:id", async ({ db, user, p, body }) => {
   const ev = need(db.evaluations.find((e) => e.id === p.id), "Evaluation");
   projFor(db, user, ev.project_id);
   if (body.action === "approve") ev.moderation_status = "approved";
   else { ev.moderation_status = "removed"; ev.comment = "[Removed by moderator]"; }
   log(db, user.id, `moderation.${body.action}`, "evaluation", ev.id, ev.flag_reason ?? "");
-  generateReport(db, ev.target_id, ev.milestone_id, true);
+  await generateReport(db, ev.target_id, ev.milestone_id, true);
   return { ok: true, status: ev.moderation_status };
 });
 route("POST", "/api/instructor/interventions", ({ db, user, body }) => {
@@ -446,10 +475,10 @@ route("POST", "/api/instructor/interventions", ({ db, user, body }) => {
   log(db, user.id, "intervention.raised", "intervention", i.id, body.reason);
   return { id: i.id };
 });
-route("POST", "/api/instructor/reports/:sid/:mid/regenerate", ({ db, user, p }) => {
+route("POST", "/api/instructor/reports/:sid/:mid/regenerate", async ({ db, user, p }) => {
   const m = need(db.milestones.find((x) => x.id === p.mid), "Milestone");
   projFor(db, user, m.project_id);
-  const rep = generateReport(db, p.sid, p.mid, true) ?? fail(409, "The 360° evaluation is not complete for this student yet");
+  const rep = (await generateReport(db, p.sid, p.mid, true)) ?? fail(409, "The 360° evaluation is not complete for this student yet");
   return reportOut(db, rep);
 });
 route("GET", "/api/instructor/cohort-report", ({ db, user, q }) => {
@@ -676,7 +705,19 @@ route("PUT", "/api/admin/settings", ({ db, user, body }) => {
   return publicSettings(db);
 });
 route("POST", "/api/admin/settings/clear-api-key", ({ db, user }) => (admin(user), (db.settings.ai_api_key = ""), publicSettings(db)));
-route("POST", "/api/admin/ai/test", ({ user }) => (admin(user), { ok: false, mode: "fallback", message: "Online demo: the browser version cannot call a GenAI API, so the local fallback engine is active. Run the full project with an API key to enable GenAI narratives." }));
+route("POST", "/api/admin/ai/test", async ({ db, user }) => {
+  admin(user);
+  const cfg = aiConfig(db);
+  if (!cfg.key) return { ok: false, mode: "fallback", message: "No API key configured - the local fallback engine is active." };
+  if (!cfg.usable) return { ok: false, mode: "fallback", message: "AI generation is disabled - the local fallback engine is active." };
+  try {
+    const out = await chatCompletion(cfg, "You are a connection test.", [{ role: "user", content: "Reply with the single word: OK" }], false, 10);
+    log(db, user.id, "ai.connection_test", "system", null, "ok=true");
+    return { ok: true, mode: "genai", message: `Connected to ${cfg.model}: ${out.trim().slice(0, 40)}` };
+  } catch (e) {
+    return { ok: false, mode: "fallback", message: `Connection failed: ${(e as Error).message}` };
+  }
+});
 route("PUT", "/api/admin/competencies/:id", ({ db, user, p, body }) => {
   admin(user);
   const c = need(db.competencies.find((x) => x.id === p.id), "Competency");
@@ -714,7 +755,7 @@ route("GET", "/api/admin/health", ({ db, user }) => {
   const last = db.backups[db.backups.length - 1];
   return {
     status: "ok", uptime_seconds: Math.round((Date.now() - started) / 1000), database: { ok: true, latency_ms: 0.1 },
-    ai: { configured: false, enabled: setting(db, "ai_enabled") === "true", model: setting(db, "ai_model"), mode: "fallback" },
+    ai: { configured: !!aiConfig(db).key, enabled: setting(db, "ai_enabled") === "true", model: setting(db, "ai_model"), mode: aiConfig(db).usable ? "genai" : "fallback" },
     counts: { users: db.users.length, active_users: db.users.filter((u) => u.is_active).length, projects: db.projects.length, evaluations: db.evaluations.length, reports, reports_ai: ai, reports_fallback: reports - ai, flagged_pending: db.evaluations.filter((e) => e.moderation_status === "pending").length },
     last_backup: last ? { created_at: last.created_at, verified: last.verified, filename: last.filename } : null,
   };
@@ -774,7 +815,7 @@ export async function handle(method: string, url: string, token: string | null, 
       const user = token ? db.users.find((x) => x.id === token && x.is_active) : null;
       if (auth && !user) fail(401, "Not authenticated");
       const p = Object.fromEntries(keys.map((k, i) => [k, decodeURIComponent(match[i + 1])]));
-      const data = h({ db, user, p, q: u.searchParams, body: body ?? {} });
+      const data = await h({ db, user, p, q: u.searchParams, body: body ?? {} });
       if (method !== "GET") saveDB();
       return { status: 200, data };
     }

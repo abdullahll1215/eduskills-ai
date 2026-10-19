@@ -1,9 +1,14 @@
 import { BrainCircuit, Calculator, Loader2, PlugZap } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "../../api/client";
+import { api, DEMO } from "../../api/client";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
 
 type Settings = Record<string, string>;
+
+const PROVIDERS = [
+  { name: "Google AI Studio (Gemini)", match: "generativelanguage", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash" },
+  { name: "OpenAI", match: "api.openai.com", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+];
 
 export default function AdminSettings() {
   const { data, loading, error, setData } = useFetch(() => api<Settings>("/api/admin/settings"));
@@ -72,12 +77,44 @@ export default function AdminSettings() {
       <form onSubmit={(e) => save(e, ["ai_enabled", "ai_base_url", "ai_model", "ai_api_key"])} className="card p-6">
         <h2 className="flex items-center gap-2 font-semibold text-slate-900"><BrainCircuit className="h-5 w-5 text-brand-600" /> Generative AI API</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Any OpenAI-compatible Chat Completions endpoint. Keys are stored encrypted. When no key is configured or the API is unreachable, the platform automatically uses the local fallback template engine.
+          Google AI Studio (Gemini) or any OpenAI-compatible Chat Completions endpoint. When no key is configured or the API is unreachable, the platform automatically uses the local fallback template engine.
         </p>
+        <div className="mt-4">
+          <div className="label">Provider</div>
+          <div className="flex flex-wrap gap-2">
+            {PROVIDERS.map((p) => {
+              const active = (form.ai_base_url ?? "").includes(p.match);
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  className={active ? "btn border border-brand-600 bg-brand-50 text-brand-700" : "btn-outline"}
+                  onClick={() => setForm({ ...form, ai_base_url: p.baseUrl, ai_model: p.model })}
+                >
+                  {p.name}
+                </button>
+              );
+            })}
+          </div>
+          {(form.ai_base_url ?? "").includes("generativelanguage") && (
+            <p className="mt-2 text-xs text-slate-500">
+              Create a free key in Google AI Studio:{" "}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="font-medium text-brand-600 underline">aistudio.google.com/apikey</a>
+              , then paste it below. Common models: gemini-2.5-flash, gemini-2.5-pro.
+            </p>
+          )}
+        </div>
+        {DEMO && (
+          <div className="mt-3">
+            <Alert kind="warning" title="Online demo">
+              The key is saved only in this browser on this device and is sent directly to the provider. Other visitors will not see it and keep using the local engine. Do not save your key on a shared or public computer.
+            </Alert>
+          </div>
+        )}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div><label className="label">API base URL</label><input className="input" value={form.ai_base_url ?? ""} onChange={(e) => set("ai_base_url", e.target.value)} placeholder="https://api.openai.com/v1" /></div>
-          <div><label className="label">Model</label><input className="input" value={form.ai_model ?? ""} onChange={(e) => set("ai_model", e.target.value)} placeholder="gpt-4o-mini" /></div>
-          <div className="sm:col-span-2"><label className="label">API key</label><input type="password" className="input" value={form.ai_api_key ?? ""} onChange={(e) => set("ai_api_key", e.target.value)} placeholder="sk-..." autoComplete="off" /></div>
+          <div><label className="label">API base URL</label><input className="input" value={form.ai_base_url ?? ""} onChange={(e) => set("ai_base_url", e.target.value)} placeholder="https://generativelanguage.googleapis.com/v1beta/openai" /></div>
+          <div><label className="label">Model</label><input className="input" value={form.ai_model ?? ""} onChange={(e) => set("ai_model", e.target.value)} placeholder="gemini-2.5-flash" /></div>
+          <div className="sm:col-span-2"><label className="label">API key</label><input type="password" className="input" value={form.ai_api_key ?? ""} onChange={(e) => set("ai_api_key", e.target.value)} placeholder="AIza... (Google AI Studio key)" autoComplete="off" /></div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.ai_enabled === "true"} onChange={(e) => set("ai_enabled", String(e.target.checked))} /> Enable Generative AI narratives</label>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">

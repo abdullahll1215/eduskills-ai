@@ -1,5 +1,6 @@
 // Browser port of backend/app/services (analytics, nlp, ai_engine fallback, artifacts).
 // Used only by the self-contained demo build, where no Python server is available.
+import { aiConfig, chatCompletion, parseJson } from "./ai";
 import type { DemoDB, Ev, Rep } from "./store";
 
 export const DEFAULTS: Record<string, string> = {
@@ -11,8 +12,8 @@ export const DEFAULTS: Record<string, string> = {
   min_peer_evaluations: "3",
   require_self_before_peer: "true",
   ai_enabled: "true",
-  ai_base_url: "https://api.openai.com/v1",
-  ai_model: "gpt-4o-mini",
+  ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
+  ai_model: "gemini-2.5-flash",
   ai_api_key: "",
   retention_days: "730",
 };
@@ -221,7 +222,68 @@ export function log(db: DemoDB, actor_id: string | null, action: string, entity 
   db.audit.push({ id: uid(), actor_id, action, entity, entity_id, details, created_at: nowIso() });
 }
 
-export function generateReport(db: DemoDB, sid: string, mid: string, force = false): Rep | null {
+export const SYSTEM_PROMPT = `You are EduSkills AI, a professional soft-skills development coach for undergraduate students
+working on team projects. You write evidence-based developmental feedback grounded in the Johari Window model.
+
+Strict rules:
+- Use ONLY the data provided (scores, deltas, anonymized peer comments, instructor notes). Never invent facts,
+  names, events or numbers. If the evidence is thin, say so.
+- Never reveal or guess the identity of any peer reviewer.
+- Be supportive, specific and professional. Address the student directly as "you".
+- A "blind spot" means the student rates themselves notably HIGHER than others do; a "hidden strength" means
+  others rate them notably HIGHER than they rate themselves.
+- Respond with a single JSON object, no markdown, matching exactly this schema:
+{"headline": str, "narrative": [str, str, str], "strengths": [str], "focus_skill": str,
+ "actionable_steps": [str, str, str], "johari_insight": str}
+- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.`;
+
+export function buildPrompt(name: string, m: Record<string, any>, s: Snap, th: ReturnType<typeof analyzeComments>) {
+  const rows = s.skills.map((x) => `- ${x.name}: self=${x.self}, peer_avg=${x.peer}, instructor=${x.inst}, external_weighted=${x.ext}, delta=${x.gap}, level=${x.level}, direction=${x.dir}`).join("\n");
+  const comments = s.comments.slice(0, 25).map((c) => `- "${c}"`).join("\n") || "- (no qualitative peer comments)";
+  const themes = Object.entries(th.themes).map(([k, t]) => `- ${k}: ${t.mentions} mentions, ${t.positive.length} positive, ${t.negative.length} negative`).join("\n") || "- none";
+  return `Student first name: ${name.split(" ")[0] || "the student"}
+Project milestone: M${m.number} - ${m.name}
+
+Quantitative metrics per soft skill (1-5 Likert scale, external = 60% instructor + 40% peer average):
+${rows}
+
+Overall: self=${s.oSelf}, external=${s.oExt}
+
+NLP pipeline output (behavioral themes from peer comments, overall sentiment ${th.overall}):
+${themes}
+
+Anonymized peer comments:
+${comments}
+
+Instructor supervisory notes:
+${s.instNotes || "(none)"}
+
+Student's own evidence / reflection:
+${s.selfEvidence || "(none)"}
+
+Write the developmental report JSON now. Focus on the skill with the largest delta.`;
+}
+
+async function aiNarrative(db: DemoDB, prompt: string) {
+  const cfg = aiConfig(db);
+  if (!cfg.usable) return null;
+  try {
+    const d = parseJson(await chatCompletion(cfg, SYSTEM_PROMPT, [{ role: "user", content: prompt }], true, 1200));
+    let paragraphs = d.narrative ?? [];
+    if (typeof paragraphs === "string") paragraphs = paragraphs.split("\n").filter((x: string) => x.trim());
+    if (!paragraphs.length) return null;
+    return {
+      headline: String(d.headline ?? "").slice(0, 300), paragraphs: paragraphs.slice(0, 5).map(String),
+      strengths: (d.strengths ?? []).slice(0, 5).map(String), focus_skill: String(d.focus_skill ?? ""),
+      actionable_steps: (d.actionable_steps ?? []).slice(0, 6).map(String), johari_insight: String(d.johari_insight ?? ""), model: cfg.model,
+    };
+  } catch (e) {
+    console.warn("GenAI unavailable, using the fallback template:", e);
+    return null;
+  }
+}
+
+export async function generateReport(db: DemoDB, sid: string, mid: string, force = false): Promise<Rep | null> {
   const c = scoring(db);
   const s = snapshot(db, sid, mid, c);
   if (!s.complete) return null;
@@ -230,7 +292,8 @@ export function generateReport(db: DemoDB, sid: string, mid: string, force = fal
   const student = db.users.find((u) => u.id === sid)!;
   const m = db.milestones.find((x) => x.id === mid)!;
   const th = analyzeComments(s.comments);
-  const g = fallback(student.full_name, s, th);
+  const ai = await aiNarrative(db, buildPrompt(student.full_name, m, s, th));
+  const g = ai ?? fallback(student.full_name, s, th);
   const level = overallLevel(s, c);
   const rep: Rep = existing ?? ({ id: uid(), student_id: sid, project_id: m.project_id, milestone_id: mid } as Rep);
   Object.assign(rep, {
@@ -240,7 +303,7 @@ export function generateReport(db: DemoDB, sid: string, mid: string, force = fal
       themes: Object.fromEntries(Object.entries(th.themes).map(([k, v]) => [k, { mentions: v.mentions, positive: v.positive.length, negative: v.negative.length }])),
       overall_sentiment: th.overall, peer_count: s.peerCount,
     },
-    source: "fallback", overall_self: s.oSelf ?? 0, overall_external: s.oExt ?? 0,
+    source: ai ? "ai" : "fallback", model: ai?.model ?? null, overall_self: s.oSelf ?? 0, overall_external: s.oExt ?? 0,
     overall_gap: round(Math.abs((s.oExt ?? 0) - (s.oSelf ?? 0))), overall_level: level, generated_at: nowIso(),
     metrics: s.skills.map((x) => ({ competency_id: x.competency_id, self_score: x.self!, peer_avg: x.peer!, instructor_score: x.inst!, external_avg: x.ext!, gap_score: x.gap!, direction: x.dir!, level: classify(x.gap!, c) })),
   });
@@ -252,7 +315,7 @@ export function generateReport(db: DemoDB, sid: string, mid: string, force = fal
     db.interventions.push({ id: uid(), student_id: sid, project_id: m.project_id, milestone_id: mid, raised_by_id: null, priority: "high", reason, status: "open", advisor_notes: null, created_at: nowIso(), updated_at: nowIso() });
     db.users.filter((u) => u.role === "advisor").forEach((u) => notify(db, u.id, `High-priority alert: ${student.full_name}`, reason, "alert", "/advisor"));
   }
-  log(db, null, "report.generated", "ai_report", rep.id, `source=fallback level=${level}`);
+  log(db, null, "report.generated", "ai_report", rep.id, `source=${ai ? "ai" : "fallback"} level=${level}`);
   return rep;
 }
 

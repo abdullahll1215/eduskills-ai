@@ -144,7 +144,7 @@ def moderate(db: Session, text: str) -> nlp.FilterResult:
             json_mode=True,
             max_tokens=60,
         )
-        data = json.loads(out)
+        data = _parse_json(out)
         if data.get("toxic"):
             return nlp.FilterResult(True, str(data.get("reason") or "Flagged by AI content filter")[:200], False)
     except Exception as exc:  # noqa: BLE001 - moderation must never block submission on provider errors
@@ -236,9 +236,18 @@ def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict) -> G
     )
 
 
+def _parse_json(raw: str) -> dict:
+    """Models (Gemini in particular) sometimes wrap JSON in markdown code fences."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    return json.loads(text)
+
+
 def ai_report(cfg: AIConfig, prompt: str) -> GeneratedReport:
-    raw = _chat(cfg, [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], json_mode=True)
-    data = json.loads(raw)
+    raw = _chat(cfg, [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], json_mode=True, max_tokens=1200)
+    data = _parse_json(raw)
     narrative = data.get("narrative") or []
     if isinstance(narrative, str):
         narrative = [p for p in narrative.split("\n") if p.strip()]

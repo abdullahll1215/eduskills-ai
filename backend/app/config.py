@@ -24,11 +24,12 @@ class Settings(BaseSettings):
     # Salt used when hashing peer reviewer identities (Salted SHA-256, UC-02).
     anonymization_salt: str = "eduskills-peer-salt"
 
-    # Generative AI (any OpenAI-compatible Chat Completions endpoint).
+    # Generative AI: Google AI Studio (Gemini, via its OpenAI-compatible endpoint) by default,
+    # or any other OpenAI-compatible Chat Completions endpoint.
     # These are defaults; the admin can override them at runtime from the System Configuration page (UC-08).
     ai_api_key: str = ""
-    ai_base_url: str = "https://api.openai.com/v1"
-    ai_model: str = "gpt-4o-mini"
+    ai_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    ai_model: str = "gemini-2.5-flash"
     ai_timeout_seconds: float = 20.0
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
