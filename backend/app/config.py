@@ -55,7 +55,7 @@ def _normalise_db_url(url: str) -> str:
 def get_settings() -> Settings:
     s = Settings()
     # Vercel's Postgres (Neon) integration exposes the connection string under these names.
-    for name in ("DATABASE_URL", "POSTGRES_URL", "POSTGRES_URL_NON_POOLING"):
+    for name in ("DATABASE_URL", "POSTGRES_URL", "STORAGE_URL", "POSTGRES_URL_NON_POOLING", "DATABASE_URL_UNPOOLED"):
         if os.environ.get(name):
             s.database_url = os.environ[name]
             break
