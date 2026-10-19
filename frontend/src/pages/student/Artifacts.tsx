@@ -2,7 +2,7 @@ import { ExternalLink, GitCommitHorizontal, Trash2, Upload } from "lucide-react"
 import { FormEvent, useState } from "react";
 import { api } from "../../api/client";
 import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
-import { MilestoneTabs, useStudentMilestone } from "./shared";
+import { useStudentMilestone } from "./shared";
 
 interface ArtifactRow {
   id: string;
@@ -26,9 +26,9 @@ const METRIC_LABELS: Record<string, string> = {
 };
 
 export default function Artifacts() {
-  const { milestones, milestone, select, loading: l1, error: e1 } = useStudentMilestone();
+  const { milestone, loading: l1, error: e1 } = useStudentMilestone();
   const { data, loading, error, reload } = useFetch(
-    () => (milestone ? api<ArtifactRow[]>("/api/student/artifacts", { params: { milestone_id: milestone.id } }) : Promise.resolve([])),
+    () => (milestone ? api<ArtifactRow[]>("/api/student/artifacts") : Promise.resolve([])),
     [milestone?.id],
   );
   const [kind, setKind] = useState<"git_log" | "submission" | "link">("git_log");
@@ -40,7 +40,7 @@ export default function Artifacts() {
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone) return <Alert>No milestones available.</Alert>;
+  if (!milestone) return <Alert>No evaluation period is available yet.</Alert>;
 
   const onFile = async (file?: File) => {
     if (file) setGitLog(await file.text());
@@ -70,7 +70,6 @@ export default function Artifacts() {
   return (
     <div>
       <PageHeader title="Project Artifacts" subtitle="Optional evidence metadata (commit logs, submission timestamps) used as objective behavioral indicators. Content is never graded." />
-      <MilestoneTabs milestones={milestones} value={milestone.id} onChange={select} />
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <form onSubmit={submit} className="card h-fit space-y-4 p-6">
           {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
@@ -113,7 +112,7 @@ export default function Artifacts() {
         </form>
 
         <div className="space-y-3">
-          {data?.length === 0 && <div className="card p-10 text-center text-sm text-slate-500">No artifacts for this milestone yet.</div>}
+          {data?.length === 0 && <div className="card p-10 text-center text-sm text-slate-500">No artifacts yet.</div>}
           {data?.map((a) => (
             <div key={a.id} className="card p-5">
               <div className="flex items-start justify-between gap-3">
