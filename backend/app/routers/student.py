@@ -162,8 +162,7 @@ def submit_self_assessment(
             Evaluation.milestone_id == m.id, Evaluation.target_id == user.id, Evaluation.eval_type == EvalType.SELF.value
         )
     )
-    if existing and existing.is_locked:
-        raise HTTPException(409, "Your self-assessment for this milestone is locked (read-only)")
+    # The student can keep editing while the evaluation period is open.
     if existing:
         db.delete(existing)
         db.flush()
@@ -176,14 +175,14 @@ def submit_self_assessment(
         reviewer_key=EvalType.SELF.value,
         comment_enc=encrypt(body.evidence.strip()),
         evidence_link=body.evidence_link,
-        is_locked=True,  # UC-01 step 6: immutable once submitted
+        is_locked=False,
     )
     ev.ratings = [SkillRating(competency_id=cid, score=s) for cid, s in ratings.items()]
     db.add(ev)
     audit.log(db, user, "evaluation.self_submitted", "evaluation", ev.id, f"milestone=M{m.number}")
     db.commit()
-    run_job(bg, trigger_report, user.id, m.id)  # UC-01 step 7: check 360° completion
-    return {"id": ev.id, "created_at": ev.created_at, "message": "Self-assessment submitted and locked"}
+    run_job(bg, trigger_report, user.id, m.id, existing is not None)  # UC-01 step 7; refresh the report after an edit
+    return {"id": ev.id, "created_at": ev.created_at, "message": "Self-assessment saved"}
 
 
 # ------------------------------------------------------------- UC-02 --

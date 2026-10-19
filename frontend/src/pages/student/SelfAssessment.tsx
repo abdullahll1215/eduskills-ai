@@ -1,8 +1,8 @@
-import { Lock } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
-import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
 import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface SelfData {
@@ -28,14 +28,13 @@ export default function SelfAssessment() {
     data.competencies.forEach((c) => (init[c.id] = data.submission?.ratings[c.id] ?? 3));
     setRatings(init);
     setTouched(new Set(data.submission ? data.competencies.map((c) => c.id) : []));
-    setMsg(null);
   }, [data]);
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
   if (!milestone || !data) return <Alert>No evaluation period is available yet.</Alert>;
 
-  const locked = !!data.submission;
+  const saved = !!data.submission;
   const closed = milestone.status !== "active";
   const missing = data.competencies.filter((c) => !touched.has(c.id));
 
@@ -45,11 +44,10 @@ export default function SelfAssessment() {
       setMsg({ kind: "error", text: `Please rate every skill (missing: ${missing.map((m) => m.skill_name).join(", ")}).` });
       return;
     }
-    if (!(await askConfirm("Once saved, your self-assessment cannot be changed. Save now?"))) return;
     setBusy(true);
     try {
       await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings } });
-      setMsg({ kind: "success", text: "Self-assessment saved. Your report will be generated once peer and instructor evaluations are complete." });
+      setMsg({ kind: "success", text: "Self-assessment saved." });
       reload();
       reloadProjects();
     } catch (err) {
@@ -65,12 +63,12 @@ export default function SelfAssessment() {
 
       <div className="space-y-4">
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
-        {locked && (
-          <Alert kind="info" title="Saved — read-only">
-            <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Saved on {fmtDate(data.submission!.created_at, true)}.</span>
+        {saved && (
+          <Alert kind="info">
+            <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Last saved on {fmtDate(data.submission!.created_at, true)}. {!closed && "You can change your ratings and save again while the evaluation period is open."}</span>
           </Alert>
         )}
-        {!locked && closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
+        {closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
 
         <form onSubmit={submit} className="card p-6">
           <h2 className="font-semibold text-slate-900">5-Skill Rubric</h2>
@@ -80,10 +78,10 @@ export default function SelfAssessment() {
               <RatingSlider
                 key={c.id}
                 label={c.skill_name}
-                description={!touched.has(c.id) && !locked ? "Not rated yet" : undefined}
+                description={!touched.has(c.id) && !saved ? "Not rated yet" : undefined}
                 value={ratings[c.id] ?? 3}
                 rubric={c.rubric}
-                disabled={locked || closed}
+                disabled={closed}
                 onChange={(v) => {
                   setRatings({ ...ratings, [c.id]: v });
                   setTouched(new Set(touched).add(c.id));
@@ -91,7 +89,7 @@ export default function SelfAssessment() {
               />
             ))}
           </div>
-          {!locked && !closed && (
+          {!closed && (
             <div className="mt-6 flex justify-end">
               <button className="btn-primary" disabled={busy}>Save</button>
             </div>

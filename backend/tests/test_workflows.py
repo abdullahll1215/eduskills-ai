@@ -43,8 +43,11 @@ def test_uc01_self_assessment_validation_lock_and_closed_period(client, khalid):
 
     r = client.post("/api/student/self-assessment", headers=khalid, json={"milestone_id": m3["id"], "ratings": ratings, "evidence": "Led the API work."})
     assert r.status_code == 201
-    r = client.post("/api/student/self-assessment", headers=khalid, json={"milestone_id": m3["id"], "ratings": ratings})
-    assert r.status_code == 409  # locked / immutable
+    edited = {k: 3 for k in ratings}
+    r = client.post("/api/student/self-assessment", headers=khalid, json={"milestone_id": m3["id"], "ratings": edited})
+    assert r.status_code == 201  # editable while the period is open
+    saved = client.get("/api/student/self-assessment", headers=khalid, params={"milestone_id": m3["id"]}).json()["submission"]
+    assert set(saved["ratings"].values()) == {3}
 
 
 def test_uc02_peer_evaluation_rules(client, khalid):

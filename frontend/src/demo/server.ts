@@ -169,13 +169,13 @@ route("POST", "/api/student/self-assessment", async ({ db, user, body }) => {
   isOpen(m);
   const ratings = validateRatings(db, body.ratings);
   const ex = db.evaluations.find((e) => e.milestone_id === m.id && e.target_id === user.id && e.eval_type === "self");
-  if (ex?.is_locked) fail(409, "Your self-assessment for this milestone is locked (read-only)");
+  // The student can keep editing while the evaluation period is open.
   if (ex) db.evaluations.splice(db.evaluations.indexOf(ex), 1);
-  const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: user.id, target_id: user.id, eval_type: "self", reviewer_key: "self", comment: (body.evidence ?? "").trim() || null, evidence_link: body.evidence_link ?? null, notes: null, sentiment: null, is_flagged: false, flag_reason: null, moderation_status: "none", is_locked: true, created_at: nowIso(), ratings };
+  const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: user.id, target_id: user.id, eval_type: "self", reviewer_key: "self", comment: (body.evidence ?? "").trim() || null, evidence_link: body.evidence_link ?? null, notes: null, sentiment: null, is_flagged: false, flag_reason: null, moderation_status: "none", is_locked: false, created_at: nowIso(), ratings };
   db.evaluations.push(ev);
   log(db, user.id, "evaluation.self_submitted", "evaluation", ev.id, `milestone=M${m.number}`);
-  await generateReport(db, user.id, m.id);
-  return { id: ev.id, created_at: ev.created_at, message: "Self-assessment submitted and locked" };
+  await generateReport(db, user.id, m.id, !!ex);
+  return { id: ev.id, created_at: ev.created_at, message: "Self-assessment saved" };
 });
 route("GET", "/api/student/peers", ({ db, user, q }) => {
   studentOnly(user);
