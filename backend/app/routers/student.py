@@ -351,31 +351,60 @@ def student_directory(q: str = "", user: User = Depends(student_only), db: Sessi
     return out
 
 
+def _all_feedback(db: Session, student_id: str, milestones: list[Milestone]) -> dict:
+    """All of a student's released feedback across every milestone, merged into one summary."""
+    cfg = scoring(db)
+    comments: list[str] = []
+    notes: list[dict] = []
+    per_skill: dict[str, list[float]] = {}
+    names: dict[str, str] = {}
+    reviews = 0
+    for m in milestones:
+        snap = analytics.snapshot(db, student_id, m.id, cfg)
+        if snap.instructor_notes:
+            inst = db.scalar(
+                select(Evaluation).where(Evaluation.milestone_id == m.id, Evaluation.target_id == student_id, Evaluation.eval_type == EvalType.INSTRUCTOR.value)
+            )
+            notes.append({"text": snap.instructor_notes, "created_at": inst.created_at if inst else None})
+        if snap.peer_count < cfg.min_peer_evaluations:
+            continue  # not released yet: keeps reviewers anonymous
+        reviews += snap.peer_count
+        comments += snap.peer_comments
+        for sk in snap.skills:
+            names[sk.code] = sk.name
+            if sk.peer_avg is not None:
+                per_skill.setdefault(sk.code, []).extend([sk.peer_avg] * snap.peer_count)
+    random.shuffle(comments)
+    order = [c.code for c in analytics.competencies(db)]
+    return {
+        "peer_count": reviews,
+        "min_peers": cfg.min_peer_evaluations,
+        "released": reviews > 0,
+        "comments": [{"text": c, "sentiment": nlp.sentiment(c)} for c in comments],
+        "skills": [
+            {"name": names.get(code, code), "code": code, "peer_avg": round(sum(v) / len(v), 2) if (v := per_skill.get(code)) else None}
+            for code in order
+            if code in names
+        ],
+        "instructor_comments": sorted(notes, key=lambda n: str(n["created_at"] or ""), reverse=True),
+    }
+
+
 @router.get("/profiles/{student_id}/feedback")
-def student_profile_feedback(student_id: str, milestone_id: str | None = None, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    """Another student's anonymous peer feedback and instructor comments, milestone by milestone."""
+def student_profile_feedback(student_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Another student's anonymous peer feedback and instructor comments, all milestones together."""
     _require_public_profiles(db)
     target = get_or_404(db, User, student_id, "Student")
     if target.role != Role.STUDENT.value or not target.is_active:
         raise HTTPException(404, "Student not found")
     enr = db.scalar(select(Enrollment).where(Enrollment.user_id == target.id))
+    info = {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": enr.team.team_name if enr and enr.team else None}
     if not enr:
-        return {"student": {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": None}, "milestones": [], "milestone": None, "feedback": None}
+        return {"student": info, "feedback": None}
     project = db.get(Project, enr.project_id)
-    milestones = [m for m in project.milestones if m.status != "planned"]
-    cfg = scoring(db)
-    m = next((x for x in milestones if x.id == milestone_id), None)
-    if m is None:  # default to the latest milestone whose feedback is already released
-        released = [x for x in milestones if analytics.snapshot(db, target.id, x.id, cfg).peer_count >= cfg.min_peer_evaluations]
-        m = (released or milestones or [None])[-1]
     audit.log(db, user, "feedback.profile_viewed", "user", target.id)
     db.commit()
-    return {
-        "student": {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": enr.team.team_name if enr.team else None},
-        "milestones": [milestone_out(x) for x in milestones],
-        "milestone": milestone_out(m) if m else None,
-        "feedback": _feedback_summary(db, target.id, m) if m else None,
-    }
+    return {"student": info, "feedback": _all_feedback(db, target.id, list(project.milestones))}
 
 
 # ------------------------------------------------------------- UC-06 --

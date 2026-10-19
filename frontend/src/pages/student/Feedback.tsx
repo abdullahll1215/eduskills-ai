@@ -1,7 +1,6 @@
 import { ArrowLeft, GraduationCap, Lock, MessageSquareQuote, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { Milestone } from "../../api/types";
 import { Alert, Empty, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
 import { MilestoneTabs, useStudentMilestone } from "./shared";
 
@@ -25,8 +24,6 @@ interface DirectoryEntry {
 
 interface ProfileData {
   student: { id: string; full_name: string; student_number: string | null; team: string | null };
-  milestones: Milestone[];
-  milestone: Milestone | null;
   feedback: FeedbackData | null;
 }
 
@@ -147,8 +144,7 @@ function StudentSearch({ onPick }: { onPick: (s: DirectoryEntry) => void }) {
 }
 
 function OtherStudent({ id, onBack }: { id: string; onBack: () => void }) {
-  const [milestoneId, setMilestoneId] = useState<string | undefined>();
-  const { data, loading, error } = useFetch(() => api<ProfileData>(`/api/student/profiles/${id}/feedback`, { params: { milestone_id: milestoneId } }), [id, milestoneId]);
+  const { data, loading, error } = useFetch(() => api<ProfileData>(`/api/student/profiles/${id}/feedback`), [id]);
 
   if (loading && !data) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
@@ -162,20 +158,7 @@ function OtherStudent({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
         <button className="btn-outline" onClick={onBack}><ArrowLeft className="h-4 w-4" /> Back to my feedback</button>
       </div>
-      {data.milestones.length > 0 && (
-        <div className="mb-6 inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1">
-          {data.milestones.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setMilestoneId(m.id)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${data.milestone?.id === m.id ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-            >
-              M{m.number} · {m.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {data.feedback ? <FeedbackView data={data.feedback} who={data.student.full_name.split(" ")[0]} /> : <Empty title="No feedback yet">This student has not been evaluated in any milestone yet.</Empty>}
+      {data.feedback ? <FeedbackView data={data.feedback} who={data.student.full_name.split(" ")[0]} /> : <Empty title="No feedback yet">This student has not been evaluated yet.</Empty>}
     </div>
   );
 }

@@ -206,10 +206,11 @@ def test_student_directory_and_profile_feedback(client, khalid, admin):
     results = client.get("/api/student/directory", headers=khalid, params={"q": "saad"}).json()
     assert len(results) == 1 and results[0]["full_name"].startswith("Saad")
     saad = results[0]["id"]
-    m1 = next(m for m in client.get("/api/student/projects", headers=khalid).json()[0]["milestones"] if m["number"] == 1)
-    r = client.get(f"/api/student/profiles/{saad}/feedback", headers=khalid, params={"milestone_id": m1["id"]}).json()
+    r = client.get(f"/api/student/profiles/{saad}/feedback", headers=khalid).json()
     fb = r["feedback"]
-    assert fb["released"] and fb["comments"] and fb["instructor_comments"]
+    # Feedback from all milestones is merged: M1 and M2 each released 3 peer reviews
+    assert fb["released"] and fb["peer_count"] >= 6 and len(fb["comments"]) >= 6
+    assert len(fb["instructor_comments"]) >= 2
     assert all("[Removed" not in c["text"] for c in fb["comments"])
     # The admin can turn the feature off
     client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "false"}})

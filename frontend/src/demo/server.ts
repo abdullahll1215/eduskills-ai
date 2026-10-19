@@ -244,19 +244,37 @@ route("GET", "/api/student/directory", ({ db, user, q }) => {
       return { id: u.id, full_name: u.full_name, student_number: u.student_number, team: e ? teamName(db, e.team_id) : null, project: e ? db.projects.find((p) => p.id === e.project_id)?.title ?? null : null, is_me: u.id === user.id };
     });
 });
-route("GET", "/api/student/profiles/:sid/feedback", ({ db, user, p, q }) => {
+function allFeedback(db: DemoDB, sid: string, mss: any[]) {
+  const c = scoring(db);
+  const comments: string[] = [];
+  const notes: { text: string; created_at: string }[] = [];
+  const perSkill: Record<string, number[]> = {};
+  let reviews = 0;
+  for (const m of mss) {
+    const s = snapshot(db, sid, m.id, c);
+    const inst = db.evaluations.find((e) => e.milestone_id === m.id && e.target_id === sid && e.eval_type === "instructor");
+    if (inst?.notes) notes.push({ text: inst.notes, created_at: inst.created_at });
+    if (s.peerCount < c.minPeers) continue;
+    reviews += s.peerCount;
+    comments.push(...s.comments);
+    for (const k of s.skills) if (k.peer != null) (perSkill[k.code] ??= []).push(...Array(s.peerCount).fill(k.peer));
+  }
+  return {
+    peer_count: reviews, min_peers: c.minPeers, released: reviews > 0,
+    comments: comments.sort(() => Math.random() - 0.5).map((t) => ({ text: t, sentiment: sentiment(t) })),
+    skills: competencies(db).filter((k) => perSkill[k.code]).map((k) => ({ name: k.skill_name, code: k.code, peer_avg: round(perSkill[k.code].reduce((a, b) => a + b, 0) / perSkill[k.code].length) })),
+    instructor_comments: notes.sort((a, b) => b.created_at.localeCompare(a.created_at)),
+  };
+}
+route("GET", "/api/student/profiles/:sid/feedback", ({ db, user, p }) => {
   studentOnly(user);
   publicProfiles(db);
   const t = db.users.find((u) => u.id === p.sid && u.role === "student" && u.is_active) ?? fail(404, "Student not found");
   const e = db.enrollments.find((x) => x.user_id === t.id);
   const info = { id: t.id, full_name: t.full_name, student_number: t.student_number, team: e ? teamName(db, e.team_id) : null };
-  if (!e) return { student: info, milestones: [], milestone: null, feedback: null };
-  const mss = msOf(db, e.project_id).filter((m) => m.status !== "planned");
-  const c = scoring(db);
-  const released = mss.filter((x) => snapshot(db, t.id, x.id, c).peerCount >= c.minPeers);
-  const m = mss.find((x) => x.id === q.get("milestone_id")) ?? released[released.length - 1] ?? mss[mss.length - 1];
+  if (!e) return { student: info, feedback: null };
   log(db, user.id, "feedback.profile_viewed", "user", t.id);
-  return { student: info, milestones: mss.map(msOut), milestone: m ? msOut(m) : null, feedback: m ? feedbackSummary(db, t.id, m) : null };
+  return { student: info, feedback: allFeedback(db, t.id, msOf(db, e.project_id)) };
 });
 route("GET", "/api/student/dashboard", ({ db, user, q }) => {
   studentOnly(user);
