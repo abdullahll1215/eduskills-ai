@@ -19,8 +19,6 @@ export default function SelfAssessment() {
   );
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
-  const [evidence, setEvidence] = useState("");
-  const [link, setLink] = useState("");
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -30,8 +28,6 @@ export default function SelfAssessment() {
     data.competencies.forEach((c) => (init[c.id] = data.submission?.ratings[c.id] ?? 3));
     setRatings(init);
     setTouched(new Set(data.submission ? data.competencies.map((c) => c.id) : []));
-    setEvidence(data.submission?.evidence ?? "");
-    setLink(data.submission?.evidence_link ?? "");
     setMsg(null);
   }, [data]);
 
@@ -49,11 +45,11 @@ export default function SelfAssessment() {
       setMsg({ kind: "error", text: `Please rate every skill (missing: ${missing.map((m) => m.skill_name).join(", ")}).` });
       return;
     }
-    if (!(await askConfirm("Once submitted, your self-assessment is locked and cannot be changed. Submit now?"))) return;
+    if (!(await askConfirm("Once saved, your self-assessment cannot be changed. Save now?"))) return;
     setBusy(true);
     try {
-      await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings, evidence, evidence_link: link || null } });
-      setMsg({ kind: "success", text: "Self-assessment submitted and locked. Your report will be generated once peer and instructor evaluations are complete." });
+      await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings } });
+      setMsg({ kind: "success", text: "Self-assessment saved. Your report will be generated once peer and instructor evaluations are complete." });
       reload();
       reloadProjects();
     } catch (err) {
@@ -65,13 +61,13 @@ export default function SelfAssessment() {
 
   return (
     <div>
-      <PageHeader title="Self-Assessment" subtitle="Rate your own soft skills on a 1–5 Likert scale and provide evidence." />
+      <PageHeader title="Self-Assessment" subtitle="Rate your own soft skills on a 1–5 Likert scale." />
 
       <div className="space-y-4">
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         {locked && (
-          <Alert kind="info" title="Submitted — read-only">
-            <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Locked on {fmtDate(data.submission!.created_at, true)}.</span>
+          <Alert kind="info" title="Saved — read-only">
+            <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Saved on {fmtDate(data.submission!.created_at, true)}.</span>
           </Alert>
         )}
         {!locked && closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
@@ -95,25 +91,9 @@ export default function SelfAssessment() {
               />
             ))}
           </div>
-          <div className="mt-4 grid gap-4">
-            <div>
-              <label className="label">Evidence & reflection</label>
-              <textarea
-                className="input min-h-[110px]"
-                value={evidence}
-                disabled={locked || closed}
-                onChange={(e) => setEvidence(e.target.value)}
-                placeholder="Describe concrete situations from your project work that support your ratings..."
-              />
-            </div>
-            <div>
-              <label className="label">Evidence link (optional)</label>
-              <input className="input" value={link} disabled={locked || closed} onChange={(e) => setLink(e.target.value)} placeholder="https://github.com/... or a shared document" />
-            </div>
-          </div>
           {!locked && !closed && (
             <div className="mt-6 flex justify-end">
-              <button className="btn-primary" disabled={busy}>Submit & Lock Self-Assessment</button>
+              <button className="btn-primary" disabled={busy}>Save</button>
             </div>
           )}
         </form>
