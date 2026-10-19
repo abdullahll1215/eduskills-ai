@@ -2,6 +2,7 @@
 // Used only by the self-contained demo build, where no Python server is available.
 import { aiConfig, chatCompletion, parseJson } from "./ai";
 import type { DemoDB, Ev, Rep } from "./store";
+import { getLang } from "../i18n";
 
 export const DEFAULTS: Record<string, string> = {
   instructor_weight: "0.6",
@@ -199,6 +200,54 @@ function fallback(name: string, s: Snap, th: ReturnType<typeof analyzeComments>)
     actionable_steps: STEPS[w?.code ?? "COMMUNICATION"] ?? STEPS.COMMUNICATION,
     johari_insight: w?.gap != null ? `Largest variance (delta ${w.gap.toFixed(1)}) found in ${w.name}.` : "Not enough data for a Johari analysis yet.",
   };
+}
+
+const SKILL_AR: Record<string, string> = { COMMUNICATION: "التواصل", LEADERSHIP: "القيادة", ADAPTABILITY: "القدرة على التكيف", COLLABORATION: "التعاون", PROBLEM_SOLVING: "حل المشكلات" };
+
+const STEPS_AR: Record<string, string[]> = {
+  COMMUNICATION: ["أرسل تحديثًا مكتوبًا قصيرًا لفريقك بعد كل جلسة عمل (ما أنجزته، وما التالي، وما الذي يعيقك).", "لخّص القرارات في نهاية كل اجتماع وتأكد أن الجميع فهمها.", "مارس الإصغاء الفعّال: أعد صياغة فكرة زميلك قبل أن ترد عليها."],
+  LEADERSHIP: ["فوّض مهمتين مهمتين على الأقل في الدورة القادمة واتفق على النتيجة المتوقعة منهما.", "اسأل زملاءك عن أفكارهم قبل أن تطرح حلك في اجتماعات التخطيط.", "اطلب ملاحظات مباشرة على أسلوبك في التنسيق في منتصف فترة التقييم القادمة."],
+  ADAPTABILITY: ["عندما تتغير المتطلبات، اكتب أثر التغيير واقترح خطة معدّلة خلال 24 ساعة.", "تعامل مع النقد كمعلومة مفيدة: اشكر صاحبه ودوّن تغييرًا واحدًا ستجربه.", "تطوّع لمهمة واحدة خارج منطقة راحتك في فترة التقييم القادمة."],
+  COLLABORATION: ["اتفقوا على لوحة مهام واضحة للجميع وحدّث مهامك قبل كل اجتماع يومي.", "اعرض المساعدة على زميل واحد كل أسبوع واعملا معًا على مهمة صعبة.", "تأكد من توزيع العمل بعدل: راجع تقسيم المهام مع فريقك في بداية كل مرحلة."],
+  PROBLEM_SOLVING: ["قبل أن تبدأ البرمجة أو الكتابة، قسّم كل مشكلة إلى خطوات واذكر حلّين بديلين على الأقل.", "استخدم تحليل السبب الجذري المختصر (الأسئلة الخمسة: لماذا؟) عندما تتكرر المشكلة.", "وثّق طريقة حلك لمشكلة صعبة واحدة وشاركها مع فريقك."],
+};
+
+/** Arabic version of the template report (mirrors the backend's _fallback_report_ar). */
+function fallbackAr(name: string, s: Snap, th: ReturnType<typeof analyzeComments>) {
+  const w = s.worst;
+  const code = w?.code ?? "COMMUNICATION";
+  const focus = SKILL_AR[code] ?? w?.name ?? "التواصل";
+  const first = name.split(" ")[0] || "";
+  const ext = s.oExt ?? 0, slf = s.oSelf ?? 0;
+  const p = [`مرحبًا ${first}، يجمع هذا التقرير بين تقييمك الذاتي والتقييمات المجهولة من ${s.peerCount} من زملائك وتقييم معلمك. متوسط تقييمك لنفسك ${slf.toFixed(1)} من 5، بينما الدرجة الخارجية الموزونة (60% المعلم، 40% الزملاء) ${ext.toFixed(1)} من 5.`];
+  if (w?.gap != null && w.dir === "overestimate") p.push(`أكبر فجوة في الإدراك في مهارة ${focus}: قيّمت نفسك ${w.self}، بينما قيّمك الآخرون ${w.ext!.toFixed(1)} (الفرق ${w.gap.toFixed(1)}). وفق نافذة جوهاري هذه نقطة عمياء محتملة، أي سلوك يلاحظه فريقك ومعلمك وقد لا تكون منتبهًا له تمامًا.`);
+  else if (w?.gap != null && w.dir === "underestimate") p.push(`في مهارة ${focus} يقيّمك الآخرون أعلى (${w.ext!.toFixed(1)}) مما تقيّم نفسك (${w.self}). هذه نقطة قوة خفية، ويمكنك الاعتماد عليها بثقة أكبر.`);
+  else p.push("نظرتك لنفسك متوافقة مع نظرة الآخرين لك في المهارات الخمس.");
+  const ft = th.themes[code];
+  if (ft?.negative.length) p.push(`من ملاحظات الزملاء المتعلقة بمهارة ${focus}: «${ft.negative[0].replace(/\.$/, "")}».`);
+  else if (s.comments.length) p.push(`كتب أحد زملائك: «${s.comments[0].replace(/\.$/, "")}».`);
+  const strengths = s.skills.filter((x) => x.ext != null).sort((a, b) => b.ext! - a.ext!).slice(0, 2).filter((x) => x.ext! >= 3.5).map((x) => `${SKILL_AR[x.code] ?? x.name} (${x.ext!.toFixed(1)} من 5 من الآخرين)`);
+  return {
+    headline: `مجال التركيز: ${focus}`,
+    paragraphs: p, strengths, focus_skill: focus,
+    actionable_steps: STEPS_AR[code] ?? STEPS_AR.COMMUNICATION,
+    johari_insight: w?.gap != null ? `أكبر تباين (الفرق ${w.gap.toFixed(1)}) في مهارة ${focus}.` : "لا توجد بيانات كافية لتحليل نافذة جوهاري بعد.",
+  };
+}
+
+/** Report content in the interface language; the Arabic text is generated once and stored with the report. */
+export function localizedContent(db: DemoDB, r: Rep) {
+  const { i18n, ...content } = (r.content ?? {}) as Record<string, any>;
+  if (getLang() !== "ar") return content;
+  let ar = i18n?.ar;
+  if (!ar) {
+    const s = snapshot(db, r.student_id, r.milestone_id, scoring(db));
+    if (!s.complete) return content;
+    const student = db.users.find((u) => u.id === r.student_id);
+    ar = fallbackAr(student?.full_name ?? "", s, analyzeComments(s.comments));
+    r.content = { ...content, i18n: { ...(i18n ?? {}), ar } };
+  }
+  return { ...content, ...ar };
 }
 
 function resources(db: DemoDB, s: Snap) {

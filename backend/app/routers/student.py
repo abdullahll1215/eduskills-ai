@@ -483,7 +483,7 @@ def _report_out(rep: AIReport) -> dict:
         "id": rep.id,
         "milestone": milestone_out(rep.milestone),
         "narrative": rep.narrative,
-        "content": rep.content,
+        "content": ai_engine.localized_content(rep),
         "source": rep.source,
         "overall_self": rep.overall_self,
         "overall_external": rep.overall_external,

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ..models import (
     AIReport,
@@ -23,6 +23,7 @@ from ..models import (
 )
 from . import audit, nlp
 from .analytics import StudentSnapshot, classify, overall_level, snapshot
+from .locale import current_lang
 from .settings_store import AIConfig, ai_config, scoring
 
 logger = logging.getLogger("eduskills.ai")
@@ -43,6 +44,12 @@ Strict rules:
 - "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next evaluation period.
 - "video_search_query" is a short English YouTube search phrase (4-8 words) that finds a practical tutorial
   for the student's focus area, e.g. "how to delegate tasks as a team leader"."""
+
+
+ARABIC_INSTRUCTION = """
+- Write every text value (headline, narrative, strengths, focus_skill, actionable_steps, johari_insight) in clear
+  Modern Standard Arabic for a Saudi university student. Quote peer comments exactly as written. Begin every paragraph with an Arabic word (not a Latin name).
+  Keep "video_search_query" in English."""
 
 
 @dataclass
@@ -296,7 +303,97 @@ STEP_LIBRARY = {
 }
 
 
-def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict) -> GeneratedReport:
+SKILL_AR = {
+    "COMMUNICATION": "التواصل",
+    "LEADERSHIP": "القيادة",
+    "ADAPTABILITY": "القدرة على التكيف",
+    "COLLABORATION": "التعاون",
+    "PROBLEM_SOLVING": "حل المشكلات",
+}
+
+STEP_LIBRARY_AR = {
+    "COMMUNICATION": [
+        "أرسل تحديثًا مكتوبًا قصيرًا لفريقك بعد كل جلسة عمل (ما أنجزته، وما التالي، وما الذي يعيقك).",
+        "لخّص القرارات في نهاية كل اجتماع وتأكد أن الجميع فهمها.",
+        "مارس الإصغاء الفعّال: أعد صياغة فكرة زميلك قبل أن ترد عليها.",
+    ],
+    "LEADERSHIP": [
+        "فوّض مهمتين مهمتين على الأقل في الدورة القادمة واتفق على النتيجة المتوقعة منهما.",
+        "اسأل زملاءك عن أفكارهم قبل أن تطرح حلك في اجتماعات التخطيط.",
+        "اطلب ملاحظات مباشرة على أسلوبك في التنسيق في منتصف فترة التقييم القادمة.",
+    ],
+    "ADAPTABILITY": [
+        "عندما تتغير المتطلبات، اكتب أثر التغيير واقترح خطة معدّلة خلال 24 ساعة.",
+        "تعامل مع النقد كمعلومة مفيدة: اشكر صاحبه ودوّن تغييرًا واحدًا ستجربه.",
+        "تطوّع لمهمة واحدة خارج منطقة راحتك في فترة التقييم القادمة.",
+    ],
+    "COLLABORATION": [
+        "اتفقوا على لوحة مهام واضحة للجميع وحدّث مهامك قبل كل اجتماع يومي.",
+        "اعرض المساعدة على زميل واحد كل أسبوع واعملا معًا على مهمة صعبة.",
+        "تأكد من توزيع العمل بعدل: راجع تقسيم المهام مع فريقك في بداية كل مرحلة.",
+    ],
+    "PROBLEM_SOLVING": [
+        "قبل أن تبدأ البرمجة أو الكتابة، قسّم كل مشكلة إلى خطوات واذكر حلّين بديلين على الأقل.",
+        "استخدم تحليل السبب الجذري المختصر (الأسئلة الخمسة: لماذا؟) عندما تتكرر المشكلة.",
+        "وثّق طريقة حلك لمشكلة صعبة واحدة وشاركها مع فريقك.",
+    ],
+}
+
+
+def _fallback_report_ar(student_name: str, snap: StudentSnapshot, themes: dict) -> GeneratedReport:
+    worst = snap.max_gap_skill
+    code = worst.code if worst else "COMMUNICATION"
+    focus = SKILL_AR.get(code, worst.name if worst else "التواصل")
+    first = student_name.split()[0] if student_name else ""
+    ext, slf = snap.overall_external or 0, snap.overall_self or 0
+    paragraphs = [
+        f"مرحبًا {first}، يجمع هذا التقرير بين تقييمك الذاتي والتقييمات المجهولة من {snap.peer_count} من زملائك وتقييم معلمك. "
+        f"متوسط تقييمك لنفسك {slf:.1f} من 5، بينما الدرجة الخارجية الموزونة (60% المعلم، 40% الزملاء) {ext:.1f} من 5."
+    ]
+    if worst and worst.gap is not None and worst.direction == "overestimate":
+        paragraphs.append(
+            f"أكبر فجوة في الإدراك في مهارة {focus}: قيّمت نفسك {worst.self_score}، بينما قيّمك الآخرون {worst.external:.1f} "
+            f"(الفرق {worst.gap:.1f}). وفق نافذة جوهاري هذه نقطة عمياء محتملة، أي سلوك يلاحظه فريقك ومعلمك وقد لا تكون منتبهًا له تمامًا."
+        )
+    elif worst and worst.gap is not None and worst.direction == "underestimate":
+        paragraphs.append(
+            f"في مهارة {focus} يقيّمك الآخرون أعلى ({worst.external:.1f}) مما تقيّم نفسك ({worst.self_score}). "
+            f"هذه نقطة قوة خفية، ويمكنك الاعتماد عليها بثقة أكبر."
+        )
+    else:
+        paragraphs.append("نظرتك لنفسك متوافقة مع نظرة الآخرين لك في المهارات الخمس.")
+    focus_theme = themes.get("themes", {}).get(code, {})
+    if focus_theme.get("negative"):
+        quote = focus_theme["negative"][0].rstrip(".")
+        paragraphs.append(f"من ملاحظات الزملاء المتعلقة بمهارة {focus}: «{quote}».")
+    elif snap.peer_comments:
+        paragraphs.append(f"كتب أحد زملائك: «{snap.peer_comments[0].rstrip('.')}».")
+
+    strengths = [
+        f"{SKILL_AR.get(s.code, s.name)} ({s.external:.1f} من 5 من الآخرين)"
+        for s in sorted((s for s in snap.skills if s.external is not None), key=lambda s: -s.external)[:2]
+        if s.external >= 3.5
+    ]
+    johari = (
+        f"أكبر تباين (الفرق {worst.gap:.1f}) في مهارة {focus}."
+        if worst and worst.gap is not None
+        else "لا توجد بيانات كافية لتحليل نافذة جوهاري بعد."
+    )
+    return GeneratedReport(
+        headline=f"مجال التركيز: {focus}",
+        narrative=paragraphs,
+        strengths=strengths,
+        focus_skill=focus,
+        actionable_steps=STEP_LIBRARY_AR.get(code, STEP_LIBRARY_AR["COMMUNICATION"]),
+        johari_insight=johari,
+        source="fallback",
+        model=None,
+    )
+
+
+def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict, lang: str = "en") -> GeneratedReport:
+    if lang == "ar":
+        return _fallback_report_ar(student_name, snap, themes)
     worst = snap.max_gap_skill
     focus = worst.name if worst else "Communication"
     first = student_name.split()[0] if student_name else "Student"
@@ -358,8 +455,9 @@ def _parse_json(raw: str) -> dict:
     return json.loads(text)
 
 
-def ai_report(cfg: AIConfig, prompt: str) -> GeneratedReport:
-    raw = _chat(cfg, [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], json_mode=True, max_tokens=1200)
+def ai_report(cfg: AIConfig, prompt: str, lang: str = "en") -> GeneratedReport:
+    system = SYSTEM_PROMPT + (ARABIC_INSTRUCTION if lang == "ar" else "")
+    raw = _chat(cfg, [{"role": "system", "content": system}, {"role": "user", "content": prompt}], json_mode=True, max_tokens=2000 if lang == "ar" else 1200)
     data = _parse_json(raw)
     narrative = data.get("narrative") or []
     if isinstance(narrative, str):
@@ -498,6 +596,55 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
         _raise_auto_intervention(db, snap, milestone, student)
     audit.log(db, None, "report.generated", "ai_report", report.id, f"source={generated.source} level={level.value}")
     return report
+
+
+LOCALIZED_FIELDS = ("headline", "paragraphs", "strengths", "focus_skill", "actionable_steps", "johari_insight")
+
+
+def _arabic_version(db: Session, rep: AIReport) -> dict | None:
+    """Writes the report text in Arabic from the same data (Gemini when connected, otherwise the template)."""
+    snap = snapshot(db, rep.student_id, rep.milestone_id, scoring(db))
+    if not snap.complete:
+        return None
+    student = db.get(User, rep.student_id)
+    themes = nlp.analyze_comments(snap.peer_comments)
+    generated: GeneratedReport | None = None
+    ai_cfg = ai_config(db)
+    if rep.source == "ai" and ai_cfg.usable:
+        try:
+            generated = ai_report(ai_cfg, build_prompt(student.full_name, rep.milestone, snap, themes), lang="ar")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Arabic report via GenAI unavailable, using the Arabic template: %s", exc)
+    if generated is None:
+        generated = fallback_report(student.full_name, snap, themes, lang="ar")
+    return {
+        "headline": generated.headline,
+        "paragraphs": generated.narrative,
+        "strengths": generated.strengths,
+        "focus_skill": generated.focus_skill,
+        "actionable_steps": generated.actionable_steps,
+        "johari_insight": generated.johari_insight,
+    }
+
+
+def localized_content(rep: AIReport) -> dict:
+    """Report content in the visitor's language. The Arabic text is generated once and stored with the report."""
+    content = dict(rep.content or {})
+    translations = content.pop("i18n", None) or {}
+    if current_lang.get() != "ar":
+        return content
+    arabic = translations.get("ar")
+    if not arabic:
+        db = object_session(rep)
+        arabic = _arabic_version(db, rep) if db else None
+        if not arabic:
+            return content
+        rep.content = {**content, "i18n": {**translations, "ar": arabic}}
+        try:
+            db.commit()
+        except Exception:  # noqa: BLE001 - serving the text matters more than caching it
+            db.rollback()
+    return {**content, **{k: arabic[k] for k in LOCALIZED_FIELDS if k in arabic}}
 
 
 def _raise_auto_intervention(db: Session, snap: StudentSnapshot, milestone: Milestone, student: User):

@@ -1,7 +1,7 @@
 // In-browser implementation of the REST API (mirrors backend/app/routers) for the demo build.
 import { defaultWorkProject, getDB, saveDB, type DemoDB, type Ev, type Rep } from "./store";
 import {
-  DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, log, nowIso, notify,
+  DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, localizedContent, log, nowIso, notify,
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
 } from "./logic";
 import { sha256 } from "./sha256";
@@ -57,7 +57,7 @@ function reportOut(db: DemoDB, r: Rep) {
   const m = db.milestones.find((x) => x.id === r.milestone_id)!;
   const comp = (id: string) => db.competencies.find((c) => c.id === id)!;
   return {
-    id: r.id, milestone: msOut(m), narrative: r.narrative, content: r.content, source: r.source, overall_self: r.overall_self,
+    id: r.id, milestone: msOut(m), narrative: r.narrative, content: localizedContent(db, r), source: r.source, overall_self: r.overall_self,
     overall_external: r.overall_external, overall_gap: r.overall_gap, overall_level: r.overall_level, generated_at: r.generated_at,
     metrics: [...r.metrics].sort((a, b) => comp(a.competency_id).sort_order - comp(b.competency_id).sort_order).map((d) => ({
       competency_id: d.competency_id, code: comp(d.competency_id).code, skill: comp(d.competency_id).skill_name, self: d.self_score, peer_avg: d.peer_avg,

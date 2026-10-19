@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,7 @@ from sqlalchemy import inspect, text
 
 from .database import Base, SessionLocal, engine
 from .services.common import assign_orphan_artifacts
+from .services.locale import current_lang, lang_from_header
 from .routers import admin, advisor, auth, instructor, projects, student
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -64,6 +65,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+@app.middleware("http")
+async def interface_language(request: Request, call_next):
+    """AI report text is returned in the language the visitor is using."""
+    current_lang.set(lang_from_header(request.headers.get("x-lang")))
+    return await call_next(request)
+
 
 for r in (auth.router, student.router, student.chat_router, instructor.router, projects.router, advisor.router, admin.router):
     app.include_router(r)

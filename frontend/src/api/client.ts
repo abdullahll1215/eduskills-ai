@@ -1,5 +1,5 @@
 import { showFile } from "../components/ui";
-import { translate } from "../i18n";
+import { getLang, translate } from "../i18n";
 
 const TOKEN_KEY = "eduskills.token";
 /** Self-contained build: the API runs inside the browser (see src/demo). */
@@ -55,6 +55,7 @@ export async function api<T = any>(path: string, options: { method?: string; bod
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  headers["X-Lang"] = getLang();
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(url.pathname + url.search, {
     method: options.method ?? (options.body !== undefined ? "POST" : "GET"),

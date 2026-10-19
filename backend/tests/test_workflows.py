@@ -262,3 +262,17 @@ def test_evaluate_any_student_on_platform(client):
     assert client.post("/api/student/peer-evaluations", headers=h, json=body).status_code == 409
     again = client.get("/api/student/evaluation-targets", headers=h, params={"q": other["full_name"]}).json()
     assert again[0]["status"] == "evaluated"
+
+
+def test_report_in_arabic(client, khalid):
+    rep = client.get("/api/student/dashboard", headers=khalid).json()["latest"]
+    mid = rep["milestone"]["id"]
+    en = client.get(f"/api/student/reports/{mid}", headers=khalid).json()["content"]
+    ar = client.get(f"/api/student/reports/{mid}", headers={**khalid, "X-Lang": "ar"}).json()["content"]
+    assert en["headline"].startswith("Your focus area")
+    assert ar["headline"].startswith("مجال التركيز") and "التقييم" in ar["paragraphs"][0]
+    assert ar["resources"] == en["resources"] and "i18n" not in en
+    # Stored once, English untouched
+    again = client.get(f"/api/student/reports/{mid}", headers={**khalid, "X-Lang": "ar"}).json()["content"]
+    assert again["paragraphs"] == ar["paragraphs"]
+    assert client.get(f"/api/student/reports/{mid}", headers=khalid).json()["content"]["headline"] == en["headline"]
