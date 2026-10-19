@@ -330,6 +330,7 @@ route("POST", "/api/chat", async ({ db, user, body }) => {
   const cfg = aiConfig(db);
   let reply = "";
   let source = "fallback";
+  let ai_error: string | null = null;
   if (cfg.usable) {
     try {
       const history = db.chat.filter((c) => c.user_id === user.id).slice(-8).map((c) => ({ role: c.role, content: c.content }));
@@ -337,13 +338,18 @@ route("POST", "/api/chat", async ({ db, user, body }) => {
       source = "ai";
     } catch (e) {
       console.warn("Chat AI unavailable:", e);
+      ai_error = (e as Error).name === "AbortError" ? "The AI service did not answer in time." : (e as Error).message;
     }
   }
   if (!reply) reply = chatReply(db, user, message);
   db.chat.push({ id: uid(), user_id: user.id, role: "user", content: body.message, created_at: nowIso() });
-  const m = { id: uid(), user_id: user.id, role: "assistant", content: reply, created_at: nowIso() };
+  const m = { id: uid(), user_id: user.id, role: "assistant", content: reply, created_at: nowIso(), source, model: source === "ai" ? cfg.model : null };
   db.chat.push(m);
-  return { ...m, source };
+  return { ...m, ai_error };
+});
+route("GET", "/api/chat/status", ({ db }) => {
+  const cfg = aiConfig(db);
+  return { mode: cfg.usable ? "genai" : "fallback", configured: !!cfg.key, model: cfg.model };
 });
 route("DELETE", "/api/chat", ({ db, user }) => {
   db.chat = db.chat.filter((c) => c.user_id !== user.id);

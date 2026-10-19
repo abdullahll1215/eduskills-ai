@@ -472,6 +472,14 @@ def chat_history(user: User = Depends(student_only), db: Session = Depends(get_d
     return [{"id": r.id, "role": r.role, "content": r.content, "created_at": r.created_at} for r in rows]
 
 
+@chat_router.get("/status")
+def chat_status(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    from ..services.settings_store import ai_config
+
+    cfg = ai_config(db)
+    return {"mode": "genai" if cfg.usable else "fallback", "configured": bool(cfg.api_key), "model": cfg.model}
+
+
 @chat_router.post("")
 def chat(body: ChatIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     history = [
