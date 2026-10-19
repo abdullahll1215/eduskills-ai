@@ -38,7 +38,7 @@ const NAV: Record<string, { portal: string; items: NavItem[] }> = {
       { to: "/student/self-assessment", label: "Self-Assessment", icon: <ClipboardCheck className={ic} /> },
       { to: "/student/peers", label: "Evaluate Peers", icon: <Users className={ic} /> },
       { to: "/student/report", label: "AI Growth Report", icon: <FileText className={ic} /> },
-      { to: "/student/feedback", label: "Peer Feedback", icon: <MessageCircle className={ic} /> },
+      { to: "/student/feedback", label: "360° Feedback", icon: <MessageCircle className={ic} /> },
       { to: "/student/artifacts", label: "Project Artifacts", icon: <GitCommitHorizontal className={ic} /> },
       { to: "/student/coach", label: "AI Coach", icon: <Activity className={ic} /> },
     ],

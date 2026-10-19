@@ -168,7 +168,7 @@ export default function Feedback() {
 
   return (
     <div>
-      <PageHeader title="Peer Feedback Summary" subtitle="Anonymous feedback from teammates and instructor comments. Reviewer identities are never revealed." />
+      <PageHeader title="360° Feedback" subtitle="Anonymous peer feedback and instructor comments. Search any student to view their feedback." />
       <StudentSearch onPick={(s) => setViewing(s.is_me ? null : s)} />
       {viewing ? (
         <OtherStudent key={viewing.id} id={viewing.id} onBack={() => setViewing(null)} />
