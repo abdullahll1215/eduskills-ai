@@ -390,6 +390,15 @@ def _all_feedback(db: Session, student_id: str, milestones: list[Milestone]) -> 
     }
 
 
+@router.get("/feedback/all")
+def my_feedback_all(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """The signed-in student's own feedback, all milestones together."""
+    enr = db.scalar(select(Enrollment).where(Enrollment.user_id == user.id))
+    if not enr:
+        return None
+    return _all_feedback(db, user.id, list(db.get(Project, enr.project_id).milestones))
+
+
 @router.get("/profiles/{student_id}/feedback")
 def student_profile_feedback(student_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Another student's anonymous peer feedback and instructor comments, all milestones together."""

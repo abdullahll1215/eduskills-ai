@@ -2,7 +2,6 @@ import { ArrowLeft, GraduationCap, Lock, MessageSquareQuote, Search } from "luci
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { Alert, Empty, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
-import { MilestoneTabs, useStudentMilestone } from "./shared";
 
 interface FeedbackData {
   peer_count: number;
@@ -164,12 +163,8 @@ function OtherStudent({ id, onBack }: { id: string; onBack: () => void }) {
 }
 
 export default function Feedback() {
-  const { milestones, milestone, select, loading: l1, error: e1 } = useStudentMilestone("latest-report");
   const [viewing, setViewing] = useState<DirectoryEntry | null>(null);
-  const { data, loading, error } = useFetch(
-    () => (milestone ? api<FeedbackData>("/api/student/feedback", { params: { milestone_id: milestone.id } }) : Promise.resolve(null)),
-    [milestone?.id],
-  );
+  const { data, loading, error } = useFetch(() => api<FeedbackData | null>("/api/student/feedback/all"));
 
   return (
     <div>
@@ -177,17 +172,14 @@ export default function Feedback() {
       <StudentSearch onPick={(s) => setViewing(s.is_me ? null : s)} />
       {viewing ? (
         <OtherStudent key={viewing.id} id={viewing.id} onBack={() => setViewing(null)} />
-      ) : l1 || (loading && !data) ? (
+      ) : loading && !data ? (
         <Loading />
-      ) : e1 || error ? (
-        <Alert kind="error">{e1 || error}</Alert>
-      ) : !milestone || !data ? (
-        <Alert>No milestones available.</Alert>
+      ) : error ? (
+        <Alert kind="error">{error}</Alert>
+      ) : !data ? (
+        <Empty title="You are not enrolled in a project yet">Ask your instructor to add you to a project team.</Empty>
       ) : (
-        <>
-          <MilestoneTabs milestones={milestones} value={milestone.id} onChange={select} />
-          <FeedbackView data={data} who="you" />
-        </>
+        <FeedbackView data={data} who="you" />
       )}
     </div>
   );

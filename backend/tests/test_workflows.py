@@ -216,3 +216,9 @@ def test_student_directory_and_profile_feedback(client, khalid, admin):
     client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "false"}})
     assert client.get("/api/student/directory", headers=khalid).status_code == 403
     client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "true"}})
+
+
+def test_own_feedback_all_milestones(client):
+    h = login(client, "ali@student.kfu.edu.sa")
+    fb = client.get("/api/student/feedback/all", headers=h).json()
+    assert fb["released"] and fb["peer_count"] >= 6 and fb["skills"]

@@ -266,6 +266,11 @@ function allFeedback(db: DemoDB, sid: string, mss: any[]) {
     instructor_comments: notes.sort((a, b) => b.created_at.localeCompare(a.created_at)),
   };
 }
+route("GET", "/api/student/feedback/all", ({ db, user }) => {
+  studentOnly(user);
+  const e = db.enrollments.find((x) => x.user_id === user.id);
+  return e ? allFeedback(db, user.id, msOf(db, e.project_id)) : null;
+});
 route("GET", "/api/student/profiles/:sid/feedback", ({ db, user, p }) => {
   studentOnly(user);
   publicProfiles(db);
