@@ -242,3 +242,20 @@ def test_work_projects(client):
     assert client.get(f"/api/student/work-projects/{wp}", headers=other).status_code == 404
     assert client.delete(f"/api/student/work-projects/{wp}", headers=h).json()["ok"]
     assert len(client.get("/api/student/work-projects", headers=h).json()) == 1
+
+
+def test_evaluate_any_student_on_platform(client):
+    h = login(client, "omar@student.kfu.edu.sa")
+    targets = client.get("/api/student/evaluation-targets", headers=h).json()
+    me = client.get("/api/auth/me", headers=h).json()
+    assert targets and all(t["id"] != me["id"] for t in targets)
+    mates = [t for t in targets if t["is_teammate"]]
+    assert mates and targets[: len(mates)] == mates  # teammates first
+    other = next(t for t in targets if not t["is_teammate"] and t["status"] == "available")
+    ratings = _ratings(client, h, 4)
+    body = {"target_id": other["id"], "ratings": ratings, "comment": "Very clear presenter in the joint review session and always shares useful resources."}
+    r = client.post("/api/student/peer-evaluations", headers=h, json=body)
+    assert r.status_code == 201, r.text
+    assert client.post("/api/student/peer-evaluations", headers=h, json=body).status_code == 409
+    again = client.get("/api/student/evaluation-targets", headers=h, params={"q": other["full_name"]}).json()
+    assert again[0]["status"] == "evaluated"

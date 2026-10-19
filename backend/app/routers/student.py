@@ -225,6 +225,61 @@ def peers_to_evaluate(milestone_id: str, user: User = Depends(student_only), db:
     }
 
 
+def _open_milestone_of(db: Session, student_id: str, prefer_project: str | None = None) -> Milestone | None:
+    """The evaluation period currently open for a student (their own project's first when several)."""
+    projects = list(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == student_id)))
+    projects.sort(key=lambda p: p != prefer_project)
+    for pid in projects:
+        m = db.scalar(select(Milestone).where(Milestone.project_id == pid, Milestone.status == "active").order_by(Milestone.number))
+        if m:
+            return m
+    return None
+
+
+def _evaluation_status(db: Session, reviewer: User, target_id: str, m: Milestone | None, self_first: bool) -> str:
+    if m is None:
+        return "closed"
+    key = reviewer_hash(reviewer.id, m.project_id)
+    if db.scalar(select(Evaluation.id).where(Evaluation.milestone_id == m.id, Evaluation.target_id == target_id, Evaluation.reviewer_key == key)):
+        return "evaluated"
+    if self_first and not db.scalar(
+        select(Evaluation.id).where(Evaluation.milestone_id == m.id, Evaluation.target_id == target_id, Evaluation.eval_type == EvalType.SELF.value)
+    ):
+        return "waiting_self"
+    return "available"
+
+
+@router.get("/evaluation-targets")
+def evaluation_targets(q: str = "", user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Any student on the platform can be evaluated; teammates are listed first."""
+    cfg = scoring(db)
+    my_enrollments = list(db.scalars(select(Enrollment).where(Enrollment.user_id == user.id)))
+    my_teams = {e.team_id for e in my_enrollments if e.team_id}
+    my_project = my_enrollments[0].project_id if my_enrollments else None
+    query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True), User.id != user.id)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
+    rows = []
+    for u in db.scalars(query.order_by(User.full_name).limit(200)):
+        enr = db.scalar(select(Enrollment).where(Enrollment.user_id == u.id))
+        rows.append((u, enr, bool(enr and enr.team_id in my_teams)))
+    rows.sort(key=lambda r: not r[2])
+    out = []
+    for u, enr, mate in rows[:20]:
+        m = _open_milestone_of(db, u.id, my_project)
+        out.append({
+            "id": u.id,
+            "full_name": u.full_name,
+            "student_number": u.student_number,
+            "team": enr.team.team_name if enr and enr.team else None,
+            "project": db.get(Project, enr.project_id).title if enr else None,
+            "is_teammate": mate,
+            "status": _evaluation_status(db, user, u.id, m, cfg.require_self_before_peer),
+        })
+    return out
+
+
 @router.post("/peer-check")
 def check_comment(body: CommentCheckIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Live feedback for the reviewer (local filter only, fast)."""
@@ -236,23 +291,27 @@ def check_comment(body: CommentCheckIn, user: User = Depends(student_only), db: 
 def submit_peer_evaluation(
     body: PeerEvaluationIn, bg: BackgroundTasks, user: User = Depends(student_only), db: Session = Depends(get_db)
 ):
-    m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
-    enr = _require_enrollment(db, user, m)
-    _require_open(m)
     if body.target_id == user.id:
         raise HTTPException(422, "You cannot evaluate yourself as a peer")  # UC-02 E2a
+    target = db.get(User, body.target_id)
+    if not target or target.role != Role.STUDENT.value or not target.is_active:
+        raise HTTPException(404, "Student not found")
+    # Any student on the platform can be evaluated, within that student's open evaluation period.
+    preferred = db.get(Milestone, body.milestone_id) if body.milestone_id else None
+    if preferred and enrollment_of(db, target.id, preferred.project_id):
+        m = preferred
+    else:
+        m = _open_milestone_of(db, target.id, preferred.project_id if preferred else None)
+        if m is None:
+            raise HTTPException(409, "No evaluation period is open for this student right now")
+    _require_open(m)
     cfg = scoring(db)
-    mates = teammates(db, enr)
-    if body.target_id not in {t.id for t in mates}:
-        raise HTTPException(403, "You can only evaluate members of your own team")
-    if len(mates) < cfg.min_peer_evaluations:
-        raise HTTPException(409, f"Your team needs at least {cfg.min_peer_evaluations} peers for anonymous evaluation")
     if cfg.require_self_before_peer and not db.scalar(
         select(Evaluation.id).where(
             Evaluation.milestone_id == m.id, Evaluation.target_id == body.target_id, Evaluation.eval_type == EvalType.SELF.value
         )
     ):
-        raise HTTPException(409, "This teammate has not completed their self-assessment yet")
+        raise HTTPException(409, "This student has not completed their self-assessment yet")
     ratings = validate_ratings(db, body.ratings)
     key = reviewer_hash(user.id, m.project_id)  # UC-02 step 3: salted SHA-256
     if db.scalar(
@@ -260,7 +319,7 @@ def submit_peer_evaluation(
             Evaluation.milestone_id == m.id, Evaluation.target_id == body.target_id, Evaluation.reviewer_key == key
         )
     ):
-        raise HTTPException(409, "You have already evaluated this teammate for this milestone")
+        raise HTTPException(409, "You have already evaluated this student in the current evaluation period")
 
     comment = body.comment.strip()
     verdict = ai_engine.moderate(db, comment)  # UC-02 step 5: AI content filter

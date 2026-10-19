@@ -187,20 +187,56 @@ route("GET", "/api/student/peers", ({ db, user, q }) => {
   const mates = teammates(db, enr);
   return { milestone: msOut(m), team_size_ok: mates.length >= c.minPeers, min_peers: c.minPeers, competencies: competencies(db).map(compOut), peers: mates.map((t) => ({ id: t.id, full_name: t.full_name, evaluated: done.has(t.id), available: selfDone.has(t.id) || !c.selfFirst })) };
 });
+function openMilestoneOf(db: DemoDB, sid: string, preferProject?: string | null) {
+  const projects = db.enrollments.filter((e) => e.user_id === sid).map((e) => e.project_id).sort((a, b) => Number(a !== preferProject) - Number(b !== preferProject));
+  for (const pid of projects) {
+    const m = db.milestones.filter((x) => x.project_id === pid && x.status === "active").sort((a, b) => a.number - b.number)[0];
+    if (m) return m;
+  }
+  return null;
+}
+function evaluationStatus(db: DemoDB, reviewer: any, tid: string, m: any, selfFirst: boolean) {
+  if (!m) return "closed";
+  const key = reviewerHash(reviewer.id, m.project_id);
+  if (db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === tid && e.reviewer_key === key)) return "evaluated";
+  if (selfFirst && !db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === tid && e.eval_type === "self")) return "waiting_self";
+  return "available";
+}
+route("GET", "/api/student/evaluation-targets", ({ db, user, q }) => {
+  studentOnly(user);
+  const c = scoring(db);
+  const mine = db.enrollments.filter((e) => e.user_id === user.id);
+  const myTeams = new Set(mine.map((e) => e.team_id).filter(Boolean));
+  const term = (q.get("q") ?? "").trim().toLowerCase();
+  return db.users
+    .filter((u) => u.role === "student" && u.is_active && u.id !== user.id && (!term || `${u.full_name} ${u.student_number ?? ""}`.toLowerCase().includes(term)))
+    .map((u) => ({ u, e: db.enrollments.find((x) => x.user_id === u.id) }))
+    .map((r) => ({ ...r, mate: !!r.e && myTeams.has(r.e.team_id) }))
+    .sort((a, b) => Number(b.mate) - Number(a.mate) || a.u.full_name.localeCompare(b.u.full_name))
+    .slice(0, 20)
+    .map(({ u, e, mate }) => ({
+      id: u.id, full_name: u.full_name, student_number: u.student_number,
+      team: e ? teamName(db, e.team_id) : null, project: e ? db.projects.find((p) => p.id === e.project_id)?.title ?? null : null,
+      is_teammate: mate, status: evaluationStatus(db, user, u.id, openMilestoneOf(db, u.id, mine[0]?.project_id), c.selfFirst),
+    }));
+});
 route("POST", "/api/student/peer-check", ({ body }) => contentFilter(body.comment ?? ""));
 route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
   studentOnly(user);
-  const { m, enr } = msForStudent(db, user, body.milestone_id);
-  isOpen(m);
   if (body.target_id === user.id) fail(422, "You cannot evaluate yourself as a peer");
+  const target = db.users.find((u) => u.id === body.target_id && u.role === "student" && u.is_active);
+  if (!target) fail(404, "Student not found");
+  // Any student on the platform can be evaluated, within that student's open evaluation period.
+  const preferred = body.milestone_id ? db.milestones.find((x) => x.id === body.milestone_id) : null;
+  const m = preferred && db.enrollments.some((e) => e.user_id === body.target_id && e.project_id === preferred.project_id)
+    ? preferred
+    : openMilestoneOf(db, body.target_id, preferred?.project_id) ?? fail(409, "No evaluation period is open for this student right now");
+  isOpen(m);
   const c = scoring(db);
-  const mates = teammates(db, enr);
-  if (!mates.some((t) => t.id === body.target_id)) fail(403, "You can only evaluate members of your own team");
-  if (mates.length < c.minPeers) fail(409, `Your team needs at least ${c.minPeers} peers for anonymous evaluation`);
-  if (c.selfFirst && !db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.eval_type === "self")) fail(409, "This teammate has not completed their self-assessment yet");
+  if (c.selfFirst && !db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.eval_type === "self")) fail(409, "This student has not completed their self-assessment yet");
   const ratings = validateRatings(db, body.ratings);
   const key = reviewerHash(user.id, m.project_id);
-  if (db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.reviewer_key === key)) fail(409, "You have already evaluated this teammate for this milestone");
+  if (db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.reviewer_key === key)) fail(409, "You have already evaluated this student in the current evaluation period");
   const comment = String(body.comment ?? "").trim();
   if (!comment) fail(422, "Please write a comment");
   const v = contentFilter(comment);

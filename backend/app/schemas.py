@@ -47,7 +47,7 @@ class SelfAssessmentIn(RatingsMixin):
 
 
 class PeerEvaluationIn(RatingsMixin):
-    milestone_id: str
+    milestone_id: str | None = None  # defaults to the evaluated student's open evaluation period
     target_id: str
     comment: str = Field(min_length=1, max_length=4000)
 
