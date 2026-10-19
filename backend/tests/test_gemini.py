@@ -40,11 +40,13 @@ def gemini_settings():
     settings_store.set_value(db, "ai_model", "gemini-2.5-flash")
     db.commit()
     ai_engine._resolved_models.clear()
+    ai_engine._model_lists.clear()
     yield db
     settings_store.set_value(db, "ai_api_key", "")
     db.commit()
     db.close()
     ai_engine._resolved_models.clear()
+    ai_engine._model_lists.clear()
 
 
 def test_gemini_report_generation(client, gemini_settings, monkeypatch):
@@ -98,3 +100,29 @@ def test_gemini_error_message_is_shown(client, gemini_settings, monkeypatch):
     monkeypatch.setattr(ai_engine.httpx, "post", lambda url, headers, json, timeout: FakeResponse(400, {"error": {"message": "API key not valid."}}))
     ok, message = ai_engine.check_connection(settings_store.ai_config(gemini_settings))
     assert not ok and "API key not valid." in message
+
+
+def test_gemini_busy_model_switches_to_another(client, gemini_settings, monkeypatch):
+    """503 'high demand' on the configured model: retry once, then use another available model."""
+    posted = []
+
+    def fake_post(url, headers, json, timeout):  # noqa: A002
+        posted.append(url.split("/models/")[1].split(":")[0])
+        if "gemini-2.5-flash:" in url:
+            return FakeResponse(503, {"error": {"message": "This model is currently experiencing high demand."}})
+        return gemini_answer("OK")
+
+    def fake_get(url, params, headers, timeout):
+        return FakeResponse(200, {"models": [
+            {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.5-flash-lite", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.5-pro", "supportedGenerationMethods": ["generateContent"]},
+        ]})
+
+    monkeypatch.setattr(ai_engine.httpx, "post", fake_post)
+    monkeypatch.setattr(ai_engine.httpx, "get", fake_get)
+    monkeypatch.setattr(ai_engine.time, "sleep", lambda s: None)
+    ok, message = ai_engine.check_connection(settings_store.ai_config(gemini_settings))
+    assert ok, message
+    assert posted == ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    assert "gemini-2.5-flash-lite" in message

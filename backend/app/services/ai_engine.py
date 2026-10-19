@@ -3,6 +3,7 @@ with a deterministic fallback template based on numeric data only (UC-05 E4a).""
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -110,8 +111,14 @@ def _provider_error(resp: httpx.Response) -> str:
         return resp.text[:300]
 
 
-def _pick_gemini_model(cfg: AIConfig) -> str | None:
-    """Asks Google which models this key can use and picks the newest general-purpose Flash model."""
+_model_lists: dict[str, list[str]] = {}  # api key -> ranked models available to it
+BUSY_CODES = {429, 500, 503, 504}  # overloaded / rate limited: worth retrying or switching model
+
+
+def _gemini_models(cfg: AIConfig) -> list[str]:
+    """Models this key can use for text generation, best general-purpose ones first (cached)."""
+    if cfg.api_key in _model_lists:
+        return _model_lists[cfg.api_key]
     resp = httpx.get(f"{GEMINI_BASE}/models", params={"pageSize": 200}, headers={"x-goog-api-key": cfg.api_key}, timeout=cfg.timeout)
     if resp.status_code != 200:
         raise RuntimeError(f"Gemini API error {resp.status_code}: {_provider_error(resp)}")
@@ -120,17 +127,23 @@ def _pick_gemini_model(cfg: AIConfig) -> str | None:
         for m in resp.json().get("models", [])
         if "generateContent" in m.get("supportedGenerationMethods", [])
     ]
-    bad = ("lite", "image", "tts", "live", "audio", "embedding", "vision", "learnlm", "gemma", "thinking", "exp")
+    bad = ("image", "tts", "live", "audio", "embedding", "vision", "learnlm", "gemma", "thinking", "exp", "preview")
 
     def version(name: str) -> float:
         m = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
         return float(m.group(1)) if m else 0.0
 
-    for pattern in (r"^gemini-[\d.]+-flash$", r"^gemini-[\d.]+-flash", r"^gemini-[\d.]+-pro$", r"^gemini"):
-        found = [n for n in names if re.search(pattern, n) and not any(b in n for b in bad)]
-        if found:
-            return max(found, key=version)
-    return names[0] if names else None
+    ranked: list[str] = []
+    for pattern in (r"^gemini-[\d.]+-flash$", r"^gemini-[\d.]+-flash-lite$", r"^gemini-[\d.]+-pro$", r"^gemini-[\d.]+-flash", r"^gemini"):
+        group = sorted((n for n in names if re.search(pattern, n) and not any(b in n for b in bad) and n not in ranked), key=version, reverse=True)
+        ranked += group
+    _model_lists[cfg.api_key] = ranked or names
+    return _model_lists[cfg.api_key]
+
+
+def _pick_gemini_model(cfg: AIConfig) -> str | None:
+    models = _gemini_models(cfg)
+    return models[0] if models else None
 
 
 def _gemini(cfg: AIConfig, messages: list[dict], json_mode: bool, max_tokens: int) -> str:
@@ -149,30 +162,39 @@ def _gemini(cfg: AIConfig, messages: list[dict], json_mode: bool, max_tokens: in
         body["systemInstruction"] = {"parts": [{"text": system}]}
 
     model = _resolved_models.get(cfg.model, cfg.model).removeprefix("models/")
-    for attempt in range(2):
+    tried: list[str] = []
+    last_error = ""
+    for attempt in range(4):  # first model, one retry, then up to two other models
         resp = httpx.post(
             f"{GEMINI_BASE}/models/{model}:generateContent",
             headers={"x-goog-api-key": cfg.api_key, "Content-Type": "application/json"},
             json=body,
             timeout=cfg.timeout,
         )
-        if resp.status_code == 404 and attempt == 0:
-            # The configured model is not available for this key (renamed or retired): pick one that is.
-            replacement = _pick_gemini_model(cfg)
-            if replacement and replacement != model:
-                logger.warning("Gemini model %s not found, using %s", model, replacement)
-                _resolved_models[cfg.model] = model = replacement
-                continue
-        if resp.status_code != 200:
-            raise RuntimeError(f"Gemini API error {resp.status_code}: {_provider_error(resp)}")
-        data = resp.json()
-        parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
-        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
-        if not text:
-            reason = (data.get("candidates") or [{}])[0].get("finishReason") or data.get("promptFeedback", {}).get("blockReason")
-            raise RuntimeError(f"Gemini returned an empty answer ({reason or 'no text'})")
-        return text
-    raise RuntimeError("Gemini model could not be resolved")
+        if resp.status_code == 200:
+            data = resp.json()
+            parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+            text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+            if not text:
+                reason = (data.get("candidates") or [{}])[0].get("finishReason") or data.get("promptFeedback", {}).get("blockReason")
+                raise RuntimeError(f"Gemini returned an empty answer ({reason or 'no text'})")
+            if model != cfg.model:
+                _resolved_models[cfg.model] = model  # remember the model that works
+            return text
+        last_error = f"Gemini API error {resp.status_code}: {_provider_error(resp)}"
+        if resp.status_code not in BUSY_CODES | {404}:
+            raise RuntimeError(last_error)
+        tried.append(model)
+        if resp.status_code in BUSY_CODES and attempt == 0:
+            time.sleep(1.5)  # short spike in demand: retry the same model once
+            continue
+        # Not found or still busy: switch to another model available to this key.
+        alternatives = [m for m in _gemini_models(cfg) if m not in tried]
+        if not alternatives:
+            break
+        logger.warning("Gemini model %s unavailable (%s), switching to %s", model, resp.status_code, alternatives[0])
+        model = alternatives[0]
+    raise RuntimeError(last_error or "Gemini model could not be resolved")
 
 
 def _chat(cfg: AIConfig, messages: list[dict], json_mode: bool = False, max_tokens: int = 900) -> str:

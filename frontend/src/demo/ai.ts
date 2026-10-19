@@ -20,20 +20,25 @@ export function aiConfig(db: DemoDB): AICfg {
 const resolved: Record<string, string> = {};
 export const activeModel = (c: AICfg) => resolved[c.model] ?? c.model;
 
-async function pickModel(c: AICfg, signal: AbortSignal): Promise<string | null> {
+const modelLists: Record<string, string[]> = {};
+const BUSY = new Set([429, 500, 503, 504]);
+
+async function geminiModels(c: AICfg, signal: AbortSignal): Promise<string[]> {
+  if (modelLists[c.key]) return modelLists[c.key];
   const res = await fetch(`${GEMINI_BASE}/models?pageSize=200`, { headers: { "x-goog-api-key": c.key }, signal });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${data?.error?.message ?? "could not list models"}`);
   const names: string[] = (data.models ?? [])
     .filter((m: { supportedGenerationMethods?: string[] }) => m.supportedGenerationMethods?.includes("generateContent"))
     .map((m: { name: string }) => m.name.replace(/^models\//, ""));
-  const bad = ["lite", "image", "tts", "live", "audio", "embedding", "vision", "learnlm", "gemma", "thinking", "exp"];
+  const bad = ["image", "tts", "live", "audio", "embedding", "vision", "learnlm", "gemma", "thinking", "exp", "preview"];
   const version = (n: string) => Number(n.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
-  for (const re of [/^gemini-[\d.]+-flash$/, /^gemini-[\d.]+-flash/, /^gemini-[\d.]+-pro$/, /^gemini/]) {
-    const found = names.filter((n) => re.test(n) && !bad.some((b) => n.includes(b)));
-    if (found.length) return found.sort((a, b) => version(b) - version(a))[0];
+  const ranked: string[] = [];
+  for (const re of [/^gemini-[\d.]+-flash$/, /^gemini-[\d.]+-flash-lite$/, /^gemini-[\d.]+-pro$/, /^gemini-[\d.]+-flash/, /^gemini/]) {
+    ranked.push(...names.filter((n) => re.test(n) && !bad.some((x) => n.includes(x)) && !ranked.includes(n)).sort((x, y) => version(y) - version(x)));
   }
-  return names[0] ?? null;
+  modelLists[c.key] = ranked.length ? ranked : names;
+  return modelLists[c.key];
 }
 
 const isGemini = (c: AICfg) => c.baseUrl.includes("generativelanguage.googleapis.com");
@@ -52,26 +57,32 @@ export async function chatCompletion(c: AICfg, system: string, messages: Msg[], 
         generationConfig: { temperature: 0.4, maxOutputTokens: Math.max(maxTokens, 1024), ...(json ? { responseMimeType: "application/json" } : {}) },
       });
       let model = (resolved[c.model] ?? c.model).replace(/^models\//, "");
-      for (let attempt = 0; attempt < 2; attempt++) {
+      const tried: string[] = [];
+      let lastError = "";
+      for (let attempt = 0; attempt < 4; attempt++) {
         const res = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
           method: "POST", signal: ctrl.signal, headers: { "Content-Type": "application/json", "x-goog-api-key": c.key }, body,
         });
         const data = await res.json().catch(() => ({}));
-        if (res.status === 404 && attempt === 0) {
-          // The configured model is not available for this key: ask Google which models are.
-          const replacement = await pickModel(c, ctrl.signal);
-          if (replacement && replacement !== model) {
-            resolved[c.model] = model = replacement;
-            continue;
-          }
+        if (res.ok) {
+          const parts = data?.candidates?.[0]?.content?.parts ?? [];
+          const text = parts.filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("");
+          if (!text) throw new Error(`Gemini returned an empty answer (${data?.candidates?.[0]?.finishReason ?? "no text"})`);
+          if (model !== c.model) resolved[c.model] = model;
+          return text;
         }
-        if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${data?.error?.message ?? "request failed"}`);
-        const parts = data?.candidates?.[0]?.content?.parts ?? [];
-        const text = parts.filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("");
-        if (!text) throw new Error(`Gemini returned an empty answer (${data?.candidates?.[0]?.finishReason ?? "no text"})`);
-        return text;
+        lastError = `Gemini API error ${res.status}: ${data?.error?.message ?? "request failed"}`;
+        if (!BUSY.has(res.status) && res.status !== 404) throw new Error(lastError);
+        tried.push(model);
+        if (BUSY.has(res.status) && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1500)); // short spike in demand: retry once
+          continue;
+        }
+        const next = (await geminiModels(c, ctrl.signal)).find((m) => !tried.includes(m));
+        if (!next) break;
+        model = next;
       }
-      throw new Error("Gemini model could not be resolved");
+      throw new Error(lastError || "Gemini model could not be resolved");
     }
     const res = await fetch(`${c.baseUrl}/chat/completions`, {
       method: "POST",
