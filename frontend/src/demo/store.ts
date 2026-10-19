@@ -16,7 +16,7 @@ export interface Rep {
 type Row = Record<string, any>;
 export interface DemoDB {
   users: Row[]; projects: Row[]; milestones: Row[]; teams: Row[]; enrollments: Row[]; competencies: Row[];
-  evaluations: Ev[]; reports: Rep[]; resources: Row[]; artifacts: Row[]; notifications: Row[]; interventions: Row[];
+  evaluations: Ev[]; reports: Rep[]; resources: Row[]; artifacts: Row[]; work_projects: Row[]; notifications: Row[]; interventions: Row[];
   audit: Row[]; chat: Row[]; settings: Record<string, string>; backups: Row[];
 }
 
@@ -36,7 +36,25 @@ export function getDB(): DemoDB {
     /* storage unavailable */
   }
   cache ??= structuredClone(seed) as unknown as DemoDB;
+  groupOrphanArtifacts(cache);
   return cache;
+}
+
+/** The student's project named after their course project; created on first use (mirrors the backend). */
+export function defaultWorkProject(db: DemoDB, studentId: string, projectId: string): Row {
+  const course = db.projects.find((p) => p.id === projectId);
+  const name = course?.title ?? "My project";
+  let wp = db.work_projects.find((w) => w.student_id === studentId && w.name === name);
+  if (!wp) {
+    wp = { id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36), student_id: studentId, name, description: course?.description ?? null, url: null, created_at: course?.created_at ?? new Date().toISOString() };
+    db.work_projects.push(wp);
+  }
+  return wp;
+}
+
+function groupOrphanArtifacts(db: DemoDB) {
+  db.work_projects ??= [];
+  for (const a of db.artifacts) if (!a.work_project_id) a.work_project_id = defaultWorkProject(db, a.student_id, a.project_id).id;
 }
 
 export function saveDB() {
@@ -49,6 +67,7 @@ export function saveDB() {
 
 export function resetDB() {
   cache = structuredClone(seed) as unknown as DemoDB;
+  groupOrphanArtifacts(cache);
   try {
     localStorage.removeItem(KEY);
   } catch {

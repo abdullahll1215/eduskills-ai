@@ -222,3 +222,23 @@ def test_own_feedback_all_milestones(client):
     h = login(client, "ali@student.kfu.edu.sa")
     fb = client.get("/api/student/feedback/all", headers=h).json()
     assert fb["released"] and fb["peer_count"] >= 6 and fb["skills"]
+
+
+def test_work_projects(client):
+    h = login(client, "khalid@student.kfu.edu.sa")
+    projects = client.get("/api/student/work-projects", headers=h).json()
+    # Seeded artifacts are grouped under the course project
+    assert len(projects) == 1 and projects[0]["file_count"] >= 4
+    r = client.post("/api/student/work-projects", headers=h, json={"name": "Mobile app", "description": "Flutter app", "url": "https://github.com/x/y"})
+    assert r.status_code == 201 and r.json()["files"] == []
+    wp = r.json()["id"]
+    assert client.post("/api/student/work-projects", headers=h, json={"name": "Bad", "url": "github.com"}).status_code == 422
+    m3 = _active(_project(client, h))
+    r = client.post("/api/student/artifacts", headers=h, json={"milestone_id": m3["id"], "work_project_id": wp, "kind": "link", "title": "Design doc", "url": "https://docs.example.com"})
+    assert r.status_code == 201
+    detail = client.get(f"/api/student/work-projects/{wp}", headers=h).json()
+    assert [f["title"] for f in detail["files"]] == ["Design doc"]
+    other = login(client, "ali@student.kfu.edu.sa")
+    assert client.get(f"/api/student/work-projects/{wp}", headers=other).status_code == 404
+    assert client.delete(f"/api/student/work-projects/{wp}", headers=h).json()["ok"]
+    assert len(client.get("/api/student/work-projects", headers=h).json()) == 1

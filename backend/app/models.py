@@ -248,6 +248,19 @@ class LearningResource(Base):
     competency: Mapped[Competency] = relationship()
 
 
+class WorkProject(Base):
+    """A project the student works on; groups the student's artifacts (\"My Projects\")."""
+
+    __tablename__ = "work_projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Artifact(Base):
     """Optional project evidence metadata (commit logs, submissions) used for behavioral indicators."""
 
@@ -257,6 +270,7 @@ class Artifact(Base):
     student_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     milestone_id: Mapped[str] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"), index=True)
+    work_project_id: Mapped[str | None] = mapped_column(ForeignKey("work_projects.id", ondelete="CASCADE"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(30))  # git_log | submission | link
     title: Mapped[str] = mapped_column(String(200))
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)

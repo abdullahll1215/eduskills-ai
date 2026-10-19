@@ -22,12 +22,13 @@ from ..models import (
     Role,
     SkillRating,
     User,
+    WorkProject,
     utcnow,
 )
-from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, PeerEvaluationIn, SelfAssessmentIn
+from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
-from ..services.common import competency_out, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
+from ..services.common import competency_out, default_work_project, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
 
 router = APIRouter(prefix="/api/student", tags=["student"])
@@ -533,21 +534,72 @@ def _passport_csv(db: Session, user: User, project_id: str | None):
 # --------------------------------------------------------- artifacts --
 
 
+def _artifact_out(a: Artifact) -> dict:
+    return {"id": a.id, "milestone_id": a.milestone_id, "work_project_id": a.work_project_id, "kind": a.kind, "title": a.title, "url": a.url, "metrics": a.metrics, "created_at": a.created_at}
+
+
+def _own_work_project(db: Session, user: User, wp_id: str) -> WorkProject:
+    wp = db.get(WorkProject, wp_id)
+    if not wp or wp.student_id != user.id:
+        raise HTTPException(404, "Project not found")
+    return wp
+
+
+def _work_project_out(db: Session, wp: WorkProject, with_files: bool = False) -> dict:
+    files = db.scalars(select(Artifact).where(Artifact.work_project_id == wp.id).order_by(Artifact.created_at.desc())).all()
+    out = {
+        "id": wp.id, "name": wp.name, "description": wp.description, "url": wp.url, "created_at": wp.created_at,
+        "file_count": len(files), "updated_at": files[0].created_at if files else wp.created_at,
+    }
+    if with_files:
+        out["files"] = [_artifact_out(a) for a in files]
+    return out
+
+
+@router.get("/work-projects")
+def list_work_projects(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    rows = db.scalars(select(WorkProject).where(WorkProject.student_id == user.id).order_by(WorkProject.created_at)).all()
+    return [_work_project_out(db, wp) for wp in rows]
+
+
+@router.post("/work-projects", status_code=201)
+def add_work_project(body: WorkProjectIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    if body.url and not body.url.lower().startswith(("http://", "https://")):
+        raise HTTPException(422, "The project link must start with http:// or https://")
+    wp = WorkProject(student_id=user.id, name=body.name.strip(), description=(body.description or "").strip() or None, url=body.url or None)
+    db.add(wp)
+    audit.log(db, user, "work_project.added", "work_project", wp.id, wp.name)
+    db.commit()
+    return _work_project_out(db, wp, with_files=True)
+
+
+@router.get("/work-projects/{wp_id}")
+def get_work_project(wp_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    return _work_project_out(db, _own_work_project(db, user, wp_id), with_files=True)
+
+
+@router.delete("/work-projects/{wp_id}")
+def delete_work_project(wp_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    wp = _own_work_project(db, user, wp_id)
+    db.execute(delete(Artifact).where(Artifact.work_project_id == wp.id))
+    db.delete(wp)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/artifacts")
 def list_artifacts(milestone_id: str | None = None, user: User = Depends(student_only), db: Session = Depends(get_db)):
     q = select(Artifact).where(Artifact.student_id == user.id)
     if milestone_id:
         q = q.where(Artifact.milestone_id == milestone_id)
-    return [
-        {"id": a.id, "milestone_id": a.milestone_id, "kind": a.kind, "title": a.title, "url": a.url, "metrics": a.metrics, "created_at": a.created_at}
-        for a in db.scalars(q.order_by(Artifact.created_at.desc()))
-    ]
+    return [_artifact_out(a) for a in db.scalars(q.order_by(Artifact.created_at.desc()))]
 
 
 @router.post("/artifacts", status_code=201)
 def add_artifact(body: ArtifactIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
     _require_enrollment(db, user, m)
+    wp = _own_work_project(db, user, body.work_project_id) if body.work_project_id else default_work_project(db, user.id, m.project_id)
     metrics: dict = {}
     if body.kind == "git_log":
         commits = artifacts.parse_git_log(body.git_log or "")
@@ -556,7 +608,7 @@ def add_artifact(body: ArtifactIn, user: User = Depends(student_only), db: Sessi
         metrics = artifacts.commit_indicators(commits, m.due_date)
     elif body.kind == "submission":
         metrics = artifacts.submission_indicators(body.submitted_at or utcnow(), m.due_date)
-    a = Artifact(student_id=user.id, project_id=m.project_id, milestone_id=m.id, kind=body.kind, title=body.title, url=body.url, metrics=metrics)
+    a = Artifact(student_id=user.id, project_id=m.project_id, milestone_id=m.id, work_project_id=wp.id, kind=body.kind, title=body.title, url=body.url, metrics=metrics)
     db.add(a)
     audit.log(db, user, "artifact.added", "artifact", a.id, body.kind)
     db.commit()

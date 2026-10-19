@@ -1,5 +1,5 @@
 // In-browser implementation of the REST API (mirrors backend/app/routers) for the demo build.
-import { getDB, saveDB, type DemoDB, type Ev, type Rep } from "./store";
+import { defaultWorkProject, getDB, saveDB, type DemoDB, type Ev, type Rep } from "./store";
 import {
   DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, log, nowIso, notify,
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
@@ -322,6 +322,32 @@ export function passportCsv(db: DemoDB, user: any, pid?: string | null) {
 route("GET", "/api/student/passport.pdf", ({ db, user, q }) => passportCsv(db, user, q.get("project_id")));
 route("GET", "/api/student/passport.csv", ({ db, user, q }) => passportCsv(db, user, q.get("project_id")));
 
+const ownWorkProject = (db: DemoDB, user: any, id: string) => {
+  const wp = db.work_projects.find((w) => w.id === id && w.student_id === user.id);
+  if (!wp) fail(404, "Project not found");
+  return wp!;
+};
+const workProjectOut = (db: DemoDB, wp: any, withFiles = false) => {
+  const files = db.artifacts.filter((a) => a.work_project_id === wp.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return { ...wp, file_count: files.length, updated_at: files[0]?.created_at ?? wp.created_at, ...(withFiles ? { files } : {}) };
+};
+route("GET", "/api/student/work-projects", ({ db, user }) =>
+  db.work_projects.filter((w) => w.student_id === user.id).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((w) => workProjectOut(db, w)));
+route("POST", "/api/student/work-projects", ({ db, user, body }) => {
+  const name = String(body.name ?? "").trim();
+  if (!name) fail(422, "Project name is required");
+  if (body.url && !/^https?:\/\//i.test(body.url)) fail(422, "The project link must start with http:// or https://");
+  const wp = { id: uid(), student_id: user.id, name, description: String(body.description ?? "").trim() || null, url: body.url || null, created_at: nowIso() };
+  db.work_projects.push(wp);
+  return workProjectOut(db, wp, true);
+});
+route("GET", "/api/student/work-projects/:id", ({ db, user, p }) => workProjectOut(db, ownWorkProject(db, user, p.id), true));
+route("DELETE", "/api/student/work-projects/:id", ({ db, user, p }) => {
+  const wp = ownWorkProject(db, user, p.id);
+  db.artifacts = db.artifacts.filter((a) => a.work_project_id !== wp.id);
+  db.work_projects = db.work_projects.filter((w) => w.id !== wp.id);
+  return { ok: true };
+});
 route("GET", "/api/student/artifacts", ({ db, user, q }) => db.artifacts.filter((a) => a.student_id === user.id && (!q.get("milestone_id") || a.milestone_id === q.get("milestone_id"))).sort((a, b) => b.created_at.localeCompare(a.created_at)));
 route("POST", "/api/student/artifacts", ({ db, user, body }) => {
   const { m } = msForStudent(db, user, body.milestone_id);
@@ -335,7 +361,8 @@ route("POST", "/api/student/artifacts", ({ db, user, body }) => {
     const at = body.submitted_at ? new Date(body.submitted_at) : new Date();
     metrics = due ? { submitted_at: at.toISOString(), hours_before_due: round((due.getTime() - at.getTime()) / 3600000, 1), on_time: at <= due } : { submitted_at: at.toISOString() };
   }
-  const a = { id: uid(), student_id: user.id, project_id: m.project_id, milestone_id: m.id, kind: body.kind, title: body.title, url: body.url ?? null, metrics, created_at: nowIso() };
+  const wp = body.work_project_id ? ownWorkProject(db, user, body.work_project_id) : defaultWorkProject(db, user.id, m.project_id);
+  const a = { id: uid(), student_id: user.id, project_id: m.project_id, milestone_id: m.id, work_project_id: wp.id, kind: body.kind, title: body.title, url: body.url ?? null, metrics, created_at: nowIso() };
   db.artifacts.push(a);
   return { id: a.id, metrics };
 });

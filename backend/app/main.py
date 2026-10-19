@@ -9,7 +9,10 @@ from fastapi.staticfiles import StaticFiles
 
 from . import seed
 from .config import get_settings
-from .database import Base, engine
+from sqlalchemy import inspect, text
+
+from .database import Base, SessionLocal, engine
+from .services.common import assign_orphan_artifacts
 from .routers import admin, advisor, auth, instructor, projects, student
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,6 +30,19 @@ def init_db():
             seed.run()
     except Exception:  # noqa: BLE001 - another instance won the race; the data is already there
         logging.getLogger("eduskills").warning("Database initialisation skipped", exc_info=True)
+    try:
+        _upgrade_schema()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("eduskills").warning("Schema upgrade skipped", exc_info=True)
+
+
+def _upgrade_schema():
+    """Adds columns introduced after a database was first created (create_all only adds new tables)."""
+    if "work_project_id" not in {c["name"] for c in inspect(engine).get_columns("artifacts")}:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE artifacts ADD COLUMN work_project_id VARCHAR(36) REFERENCES work_projects(id) ON DELETE CASCADE"))
+    with SessionLocal() as db:
+        assign_orphan_artifacts(db)
 
 
 @asynccontextmanager

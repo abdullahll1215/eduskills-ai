@@ -83,8 +83,15 @@ class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class WorkProjectIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=5000)
+    url: str | None = Field(None, max_length=500)
+
+
 class ArtifactIn(BaseModel):
     milestone_id: str
+    work_project_id: str | None = None
     kind: str = Field(pattern="^(git_log|submission|link)$")
     title: str = Field(min_length=1, max_length=200)
     url: str | None = Field(None, max_length=500)

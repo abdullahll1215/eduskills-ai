@@ -3,7 +3,26 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Competency, Enrollment, Milestone, Project, Role, User
+from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, User, WorkProject
+
+
+def default_work_project(db: Session, student_id: str, project_id: str) -> WorkProject:
+    """The student's project named after their course project; created on first use."""
+    course = db.get(Project, project_id)
+    name = course.title if course else "My project"
+    wp = db.scalar(select(WorkProject).where(WorkProject.student_id == student_id, WorkProject.name == name))
+    if wp is None:
+        wp = WorkProject(student_id=student_id, name=name, description=course.description if course else None)
+        db.add(wp)
+        db.flush()
+    return wp
+
+
+def assign_orphan_artifacts(db: Session) -> None:
+    """Artifacts created before "My Projects" existed are grouped under the course project."""
+    for a in db.scalars(select(Artifact).where(Artifact.work_project_id.is_(None))).all():
+        a.work_project_id = default_work_project(db, a.student_id, a.project_id).id
+    db.commit()
 
 
 def get_or_404(db: Session, model, obj_id: str, label: str):
