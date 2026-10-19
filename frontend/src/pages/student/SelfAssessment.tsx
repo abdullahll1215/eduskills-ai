@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
-import { MilestoneTabs, RatingSlider, useStudentMilestone } from "./shared";
+import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface SelfData {
   milestone: Milestone;
@@ -12,7 +12,7 @@ interface SelfData {
 }
 
 export default function SelfAssessment() {
-  const { milestones, milestone, select, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
+  const { milestone, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
   const { data, loading, error, reload } = useFetch(
     () => (milestone ? api<SelfData>("/api/student/self-assessment", { params: { milestone_id: milestone.id } }) : Promise.resolve(null)),
     [milestone?.id],
@@ -37,7 +37,7 @@ export default function SelfAssessment() {
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone || !data) return <Alert>No milestones available.</Alert>;
+  if (!milestone || !data) return <Alert>No evaluation period is available yet.</Alert>;
 
   const locked = !!data.submission;
   const closed = milestone.status !== "active";
@@ -66,7 +66,6 @@ export default function SelfAssessment() {
   return (
     <div>
       <PageHeader title="Self-Assessment" subtitle="Rate your own soft skills on a 1–5 Likert scale and provide evidence." />
-      <MilestoneTabs milestones={milestones} value={milestone.id} onChange={select} badge={(m) => (m.self_done ? "✓" : null)} />
 
       <div className="space-y-4">
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
@@ -75,7 +74,7 @@ export default function SelfAssessment() {
             <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Locked on {fmtDate(data.submission!.created_at, true)}.</span>
           </Alert>
         )}
-        {!locked && closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment for this milestone is not accepting submissions.</Alert>}
+        {!locked && closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
 
         <form onSubmit={submit} className="card p-6">
           <h2 className="font-semibold text-slate-900">5-Skill Rubric</h2>
@@ -104,7 +103,7 @@ export default function SelfAssessment() {
                 value={evidence}
                 disabled={locked || closed}
                 onChange={(e) => setEvidence(e.target.value)}
-                placeholder="Describe concrete situations from this milestone that support your ratings..."
+                placeholder="Describe concrete situations from your project work that support your ratings..."
               />
             </div>
             <div>
