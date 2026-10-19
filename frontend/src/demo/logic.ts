@@ -174,8 +174,8 @@ export function contentFilter(text: string) {
 
 export const STEPS: Record<string, string[]> = {
   COMMUNICATION: ["Send a short written update to your team after each work session (what you did, what is next, blockers).", "Summarize decisions at the end of every meeting and confirm everyone understood them.", "Practice active listening: paraphrase a teammate's point before responding."],
-  LEADERSHIP: ["Delegate at least two meaningful tasks in the next sprint and agree on the expected outcome.", "Ask teammates for their ideas before proposing your own solution in planning meetings.", "Request direct feedback on your coordination style halfway through the next milestone."],
-  ADAPTABILITY: ["When requirements change, write down the impact and propose an adjusted plan within 24 hours.", "Treat critical feedback as data: thank the reviewer and note one change you will try.", "Volunteer for one task outside your comfort zone in the next milestone."],
+  LEADERSHIP: ["Delegate at least two meaningful tasks in the next sprint and agree on the expected outcome.", "Ask teammates for their ideas before proposing your own solution in planning meetings.", "Request direct feedback on your coordination style halfway through the next evaluation period."],
+  ADAPTABILITY: ["When requirements change, write down the impact and propose an adjusted plan within 24 hours.", "Treat critical feedback as data: thank the reviewer and note one change you will try.", "Volunteer for one task outside your comfort zone in the next evaluation period."],
   COLLABORATION: ["Agree on a visible task board and update your items before every stand-up.", "Offer help to one teammate each week and pair on a difficult task.", "Make sure workload is shared fairly: review the task split with your team at the start of each milestone."],
   PROBLEM_SOLVING: ["Before coding or writing, break each problem into steps and list at least two alternative solutions.", "Use a short root-cause analysis (5 Whys) when an issue repeats.", "Document how you solved one hard issue and share it with your team."],
 };
@@ -194,7 +194,7 @@ function fallback(name: string, s: Snap, th: ReturnType<typeof analyzeComments>)
   else if (s.comments.length) p.push(`One teammate wrote: "${s.comments[0].replace(/\.$/, "")}."`);
   const strengths = s.skills.filter((x) => x.ext != null).sort((a, b) => b.ext! - a.ext!).slice(0, 2).filter((x) => x.ext! >= 3.5).map((x) => `${x.name} (${x.ext!.toFixed(1)}/5 from others)`);
   return {
-    headline: `Focus area for the next milestone: ${focus}`,
+    headline: `Your focus area: ${focus}`,
     paragraphs: p, strengths, focus_skill: focus,
     actionable_steps: STEPS[w?.code ?? "COMMUNICATION"] ?? STEPS.COMMUNICATION,
     johari_insight: w?.gap != null ? `Largest variance (delta ${w.gap.toFixed(1)}) found in ${w.name}.` : "Not enough data for a Johari analysis yet.",
@@ -240,7 +240,7 @@ Strict rules:
 - Respond with a single JSON object, no markdown, matching exactly this schema:
 {"headline": str, "narrative": [str, str, str], "strengths": [str], "focus_skill": str,
  "actionable_steps": [str, str, str], "johari_insight": str, "video_search_query": str}
-- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.
+- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next evaluation period.
 - "video_search_query" is a short English YouTube search phrase (4-8 words) that finds a practical tutorial
   for the student's focus area, e.g. "how to delegate tasks as a team leader".`;
 
@@ -315,7 +315,7 @@ export async function generateReport(db: DemoDB, sid: string, mid: string, force
     metrics: s.skills.map((x) => ({ competency_id: x.competency_id, self_score: x.self!, peer_avg: x.peer!, instructor_score: x.inst!, external_avg: x.ext!, gap_score: x.gap!, direction: x.dir!, level: classify(x.gap!, c) })),
   });
   if (!existing) db.reports.push(rep);
-  notify(db, sid, `Your AI Growth Report for M${m.number} is ready`, g.headline, "report", "/student/report");
+  notify(db, sid, "Your AI Growth Report is ready", g.headline, "report", "/student/report");
   if (level === "CRITICAL_GAP" && !db.interventions.some((i) => i.student_id === sid && i.milestone_id === mid && i.status !== "resolved")) {
     const w = s.worst!;
     const reason = `Critical blind spot detected in ${w.name} at M${m.number}: self ${w.self} vs external ${w.ext!.toFixed(1)} (delta ${w.gap!.toFixed(1)}).`;

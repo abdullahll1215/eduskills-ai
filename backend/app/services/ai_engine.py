@@ -40,7 +40,7 @@ Strict rules:
 - Respond with a single JSON object, no markdown, matching exactly this schema:
 {"headline": str, "narrative": [str, str, str], "strengths": [str], "focus_skill": str,
  "actionable_steps": [str, str, str], "johari_insight": str, "video_search_query": str}
-- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.
+- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next evaluation period.
 - "video_search_query" is a short English YouTube search phrase (4-8 words) that finds a practical tutorial
   for the student's focus area, e.g. "how to delegate tasks as a team leader"."""
 
@@ -276,12 +276,12 @@ STEP_LIBRARY = {
     "LEADERSHIP": [
         "Delegate at least two meaningful tasks in the next sprint and agree on the expected outcome.",
         "Ask teammates for their ideas before proposing your own solution in planning meetings.",
-        "Request direct feedback on your coordination style halfway through the next milestone.",
+        "Request direct feedback on your coordination style halfway through the next evaluation period.",
     ],
     "ADAPTABILITY": [
         "When requirements change, write down the impact and propose an adjusted plan within 24 hours.",
         "Treat critical feedback as data: thank the reviewer and note one change you will try.",
-        "Volunteer for one task outside your comfort zone in the next milestone.",
+        "Volunteer for one task outside your comfort zone in the next evaluation period.",
     ],
     "COLLABORATION": [
         "Agree on a visible task board and update your items before every stand-up.",
@@ -338,7 +338,7 @@ def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict) -> G
         else "Not enough data for a Johari analysis yet."
     )
     return GeneratedReport(
-        headline=f"Focus area for the next milestone: {focus}",
+        headline=f"Your focus area: {focus}",
         narrative=paragraphs,
         strengths=strengths,
         focus_skill=focus,
@@ -479,7 +479,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
     audit.notify(
         db,
         student_id,
-        f"Your AI Growth Report for M{milestone.number} is ready",
+        "Your AI Growth Report is ready",
         generated.headline,
         kind="report",
         link=f"/student/report?milestone={milestone_id}",

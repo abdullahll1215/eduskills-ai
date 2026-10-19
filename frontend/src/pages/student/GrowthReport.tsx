@@ -3,10 +3,10 @@ import { api } from "../../api/client";
 import type { Report } from "../../api/types";
 import { Alert, Empty, LevelBadge, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
 import VideoSuggestion from "../../components/VideoSuggestion";
-import { MilestoneTabs, useStudentMilestone } from "./shared";
+import { useStudentMilestone } from "./shared";
 
 export default function GrowthReport() {
-  const { milestones, milestone, select, loading: l1, error: e1 } = useStudentMilestone("latest-report");
+  const { milestone, loading: l1, error: e1 } = useStudentMilestone("latest-report");
   const { data: report, loading, error } = useFetch(
     () => (milestone?.report_id ? api<Report>(`/api/student/reports/${milestone.id}`) : Promise.resolve(null)),
     [milestone?.id, milestone?.report_id],
@@ -14,7 +14,7 @@ export default function GrowthReport() {
 
   if (l1 || loading) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone) return <Alert>No milestones available.</Alert>;
+  if (!milestone) return <Alert>No evaluation period is available yet.</Alert>;
 
   const focus = report?.metrics.slice().sort((a, b) => b.gap - a.gap)[0];
   const c = report?.content;
@@ -23,13 +23,12 @@ export default function GrowthReport() {
     <div>
       <PageHeader
         title="AI Developmental Narrative"
-        subtitle={report ? `Generated ${report.source === "ai" ? "by AI" : "by the analytics engine"} based on your M${report.milestone.number} (${report.milestone.name}) evaluations · ${fmtDate(report.generated_at)}` : "Your personalized growth report"}
+        subtitle={report ? `Generated ${report.source === "ai" ? "by AI" : "by the analytics engine"} based on your latest evaluations · ${fmtDate(report.generated_at)}` : "Your personalized growth report"}
       />
-      <MilestoneTabs milestones={milestones} value={milestone.id} onChange={select} badge={(m) => (m.report_id ? "●" : null)} />
 
       {!report || !c ? (
         <Empty title="Report not available yet" icon={<Sparkles className="h-8 w-8 text-brand-500" />}>
-          The AI report for M{milestone.number} is generated automatically once your self-assessment, at least {milestone.min_peers} peer evaluations
+          Your AI report is generated automatically once your self-assessment, at least {milestone.min_peers} peer evaluations
           ({milestone.peers_received} received) and the instructor evaluation ({milestone.instructor_done ? "done" : "pending"}) are complete.
         </Empty>
       ) : (

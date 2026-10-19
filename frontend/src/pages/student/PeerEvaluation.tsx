@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
-import { MilestoneTabs, RatingSlider, useStudentMilestone } from "./shared";
+import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface PeersData {
   milestone: Milestone;
@@ -21,7 +21,7 @@ interface Check {
 }
 
 export default function PeerEvaluation() {
-  const { milestones, milestone, select, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
+  const { milestone, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
   const { data, loading, error, reload } = useFetch(
     () => (milestone ? api<PeersData>("/api/student/peers", { params: { milestone_id: milestone.id } }) : Promise.resolve(null)),
     [milestone?.id],
@@ -57,7 +57,7 @@ export default function PeerEvaluation() {
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone || !data) return <Alert>No milestones available.</Alert>;
+  if (!milestone || !data) return <Alert>No evaluation period is available yet.</Alert>;
 
   const closed = milestone.status !== "active";
   const pending = data.peers.filter((p) => !p.evaluated);
@@ -83,7 +83,6 @@ export default function PeerEvaluation() {
   return (
     <div>
       <PageHeader title="Anonymous Peer Evaluation" subtitle="Evaluate your team members securely and confidentially." />
-      <MilestoneTabs milestones={milestones} value={milestone.id} onChange={select} badge={(m) => `${m.peers_given}/${m.peers_total}`} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <form onSubmit={submit} className="card p-6">
@@ -92,7 +91,7 @@ export default function PeerEvaluation() {
               <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>
             </div>
           )}
-          {closed && <div className="mb-4"><Alert kind="warning" title="Evaluation Period Closed">Peer evaluations for this milestone are closed.</Alert></div>}
+          {closed && <div className="mb-4"><Alert kind="warning" title="Evaluation Period Closed">Peer evaluations are closed right now. They open again when your instructor starts the next evaluation period.</Alert></div>}
           {!data.team_size_ok && <div className="mb-4"><Alert kind="warning">Your team needs at least {data.min_peers} peers for anonymous evaluation.</Alert></div>}
 
           <label className="label">Select Teammate to Evaluate</label>
