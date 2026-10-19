@@ -195,3 +195,8 @@ def test_student_self_registration(client):
 def login_as(client, email, password):
     r = client.post("/api/auth/login", json={"email": email, "password": password})
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def test_ai_base_url_must_be_a_url(client, admin):
+    r = client.put("/api/admin/settings", headers=admin, json={"values": {"ai_base_url": "AQ.someKeyPastedInTheWrongBox"}})
+    assert r.status_code == 422

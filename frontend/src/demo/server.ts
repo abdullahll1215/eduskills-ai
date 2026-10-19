@@ -702,6 +702,7 @@ route("PUT", "/api/admin/settings", ({ db, user, body }) => {
   const get = (k: string) => Number(v[k] ?? setting(db, k));
   if (Math.abs(get("instructor_weight") + get("peer_weight") - 1) > 1e-6) fail(422, "Instructor and peer weights must add up to 1.0");
   if (get("critical_threshold") < get("moderate_threshold")) fail(422, "The critical threshold must be greater than the moderate threshold");
+  if (v.ai_base_url && !/^https?:\/\//.test(v.ai_base_url)) fail(422, "The API base URL must start with https:// - did you paste the API key in the wrong field?");
   for (const [k, val] of Object.entries(v)) {
     if (!(k in DEFAULTS)) fail(422, `Unknown setting: ${k}`);
     if (k === "ai_api_key" && (!val || val.startsWith("•"))) continue;

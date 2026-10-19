@@ -115,6 +115,8 @@ def update_settings(body: SettingsIn, admin: User = Depends(admin_only), db: Ses
     crit = float(vals.get("critical_threshold", get_raw(db, "critical_threshold")))
     if crit < mod:
         raise HTTPException(422, "The critical threshold must be greater than the moderate threshold")
+    if vals.get("ai_base_url") and not vals["ai_base_url"].startswith(("https://", "http://")):
+        raise HTTPException(422, "The API base URL must start with https:// - did you paste the API key in the wrong field?")
     if "min_peer_evaluations" in vals and not vals["min_peer_evaluations"].isdigit():
         raise HTTPException(422, "min_peer_evaluations must be a whole number")
     for k, v in vals.items():

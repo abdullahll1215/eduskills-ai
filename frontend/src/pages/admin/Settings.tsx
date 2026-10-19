@@ -112,9 +112,18 @@ export default function AdminSettings() {
           </div>
         )}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div><label className="label">API base URL</label><input className="input" value={form.ai_base_url ?? ""} onChange={(e) => set("ai_base_url", e.target.value)} placeholder="https://generativelanguage.googleapis.com/v1beta/openai" /></div>
+          <div><label className="label">API base URL</label><input className="input" value={form.ai_base_url ?? ""} onChange={(e) => {
+            const v = e.target.value.trim();
+            // A key pasted into the address box: move it to the key field and restore the Gemini address.
+            if (v && !/^https?:\/\//i.test(v) && !v.includes("/") && v.length > 20) {
+              setForm({ ...form, ai_api_key: v, ai_base_url: PROVIDERS[0].baseUrl, ai_model: form.ai_model || PROVIDERS[0].model });
+              setMsg({ kind: "warning", text: "That looked like an API key, so it was moved to the API key field. Now tap Save AI settings." });
+              return;
+            }
+            set("ai_base_url", e.target.value);
+          }} placeholder="https://generativelanguage.googleapis.com/v1beta/openai" /></div>
           <div><label className="label">Model</label><input className="input" value={form.ai_model ?? ""} onChange={(e) => set("ai_model", e.target.value)} placeholder="gemini-2.5-flash" /></div>
-          <div className="sm:col-span-2"><label className="label">API key</label><input type="password" className="input" value={form.ai_api_key ?? ""} onChange={(e) => set("ai_api_key", e.target.value)} placeholder="AIza... (Google AI Studio key)" autoComplete="off" /></div>
+          <div className="sm:col-span-2"><label className="label">API key</label><input type="password" className="input" value={form.ai_api_key ?? ""} onChange={(e) => set("ai_api_key", e.target.value)} placeholder="Paste your Google AI Studio key here" autoComplete="off" /></div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.ai_enabled === "true"} onChange={(e) => set("ai_enabled", String(e.target.checked))} /> Enable Generative AI narratives</label>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
