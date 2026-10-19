@@ -2,6 +2,7 @@ import { Activity, BookOpen, CheckCircle2, ExternalLink, Sparkles } from "lucide
 import { api } from "../../api/client";
 import type { Report } from "../../api/types";
 import { Alert, Empty, LevelBadge, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
+import VideoSuggestion from "../../components/VideoSuggestion";
 import { MilestoneTabs, useStudentMilestone } from "./shared";
 
 export default function GrowthReport() {
@@ -68,6 +69,7 @@ export default function GrowthReport() {
                   </div>
                 </div>
               )}
+              <VideoSuggestion metrics={report.metrics} resources={c.resources ?? []} aiQuery={c.video_query} />
             </div>
 
             <div className="space-y-6">

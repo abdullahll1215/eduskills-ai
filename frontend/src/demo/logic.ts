@@ -209,7 +209,11 @@ function resources(db: DemoDB, s: Snap) {
   for (const sk of ranked.slice(0, 2))
     for (const r of db.resources.filter((r) => r.competency_id === sk.competency_id).slice(0, 2))
       out.push({ title: r.title, provider: r.provider, url: r.url, kind: r.kind, duration: r.duration, skill: sk.name });
-  return out.slice(0, 4);
+  const top = out.slice(0, 4);
+  // A video the admin added for the focus skill is always offered (shown as the recommended video).
+  const video = ranked[0] && db.resources.find((r) => r.competency_id === ranked[0].competency_id && r.kind === "video");
+  if (video && !top.some((r) => r.url === video.url)) top.push({ title: video.title, provider: video.provider, url: video.url, kind: video.kind, duration: video.duration, skill: ranked[0].name });
+  return top;
 }
 
 export const nowIso = () => new Date().toISOString();
@@ -234,8 +238,10 @@ Strict rules:
   others rate them notably HIGHER than they rate themselves.
 - Respond with a single JSON object, no markdown, matching exactly this schema:
 {"headline": str, "narrative": [str, str, str], "strengths": [str], "focus_skill": str,
- "actionable_steps": [str, str, str], "johari_insight": str}
-- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.`;
+ "actionable_steps": [str, str, str], "johari_insight": str, "video_search_query": str}
+- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.
+- "video_search_query" is a short English YouTube search phrase (4-8 words) that finds a practical tutorial
+  for the student's focus area, e.g. "how to delegate tasks as a team leader".`;
 
 export function buildPrompt(name: string, m: Record<string, any>, s: Snap, th: ReturnType<typeof analyzeComments>) {
   const rows = s.skills.map((x) => `- ${x.name}: self=${x.self}, peer_avg=${x.peer}, instructor=${x.inst}, external_weighted=${x.ext}, delta=${x.gap}, level=${x.level}, direction=${x.dir}`).join("\n");
@@ -275,7 +281,7 @@ async function aiNarrative(db: DemoDB, prompt: string) {
     return {
       headline: String(d.headline ?? "").slice(0, 300), paragraphs: paragraphs.slice(0, 5).map(String),
       strengths: (d.strengths ?? []).slice(0, 5).map(String), focus_skill: String(d.focus_skill ?? ""),
-      actionable_steps: (d.actionable_steps ?? []).slice(0, 6).map(String), johari_insight: String(d.johari_insight ?? ""), model: cfg.model,
+      actionable_steps: (d.actionable_steps ?? []).slice(0, 6).map(String), johari_insight: String(d.johari_insight ?? ""), video_query: String(d.video_search_query ?? "").slice(0, 120), model: cfg.model,
     };
   } catch (e) {
     console.warn("GenAI unavailable, using the fallback template:", e);

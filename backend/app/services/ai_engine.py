@@ -39,8 +39,10 @@ Strict rules:
   others rate them notably HIGHER than they rate themselves.
 - Respond with a single JSON object, no markdown, matching exactly this schema:
 {"headline": str, "narrative": [str, str, str], "strengths": [str], "focus_skill": str,
- "actionable_steps": [str, str, str], "johari_insight": str}
-- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone."""
+ "actionable_steps": [str, str, str], "johari_insight": str, "video_search_query": str}
+- "narrative" has 2-4 short paragraphs. "actionable_steps" are concrete behaviors for the next milestone.
+- "video_search_query" is a short English YouTube search phrase (4-8 words) that finds a practical tutorial
+  for the student's focus area, e.g. "how to delegate tasks as a team leader"."""
 
 
 @dataclass
@@ -53,6 +55,7 @@ class GeneratedReport:
     johari_insight: str
     source: str
     model: str | None
+    video_query: str = ""
 
 
 # ------------------------------------------------------------------ prompt --
@@ -370,6 +373,7 @@ def ai_report(cfg: AIConfig, prompt: str) -> GeneratedReport:
         focus_skill=str(data.get("focus_skill", "")),
         actionable_steps=[str(s) for s in data.get("actionable_steps", [])][:6],
         johari_insight=str(data.get("johari_insight", "")),
+        video_query=str(data.get("video_search_query", ""))[:120],
         source="ai",
         model=active_model(cfg),
     )
@@ -390,7 +394,15 @@ def recommend_resources(db: Session, snap: StudentSnapshot, limit: int = 4) -> l
             out.append(
                 {"title": r.title, "provider": r.provider, "url": r.url, "kind": r.kind, "duration": r.duration, "skill": skill.name}
             )
-    return out[:limit]
+    out = out[:limit]
+    # A video the admin added for the focus skill is always offered (shown as the recommended video).
+    if ranked:
+        video = db.scalar(
+            select(LearningResource).where(LearningResource.competency_id == ranked[0].competency_id, LearningResource.kind == "video")
+        )
+        if video and all(r["url"] != video.url for r in out):
+            out.append({"title": video.title, "provider": video.provider, "url": video.url, "kind": video.kind, "duration": video.duration, "skill": ranked[0].name})
+    return out
 
 
 def generate_report(db: Session, student_id: str, milestone_id: str, force: bool = False) -> AIReport | None:
@@ -427,6 +439,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
         "focus_skill": generated.focus_skill,
         "actionable_steps": generated.actionable_steps,
         "johari_insight": generated.johari_insight,
+        "video_query": generated.video_query,
         "resources": recommend_resources(db, snap),
         "themes": {k: {"mentions": v["mentions"], "positive": len(v["positive"]), "negative": len(v["negative"])} for k, v in themes["themes"].items()},
         "overall_sentiment": themes["overall_sentiment"],

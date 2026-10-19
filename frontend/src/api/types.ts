@@ -99,6 +99,7 @@ export interface Report {
     themes: Record<string, { mentions: number; positive: number; negative: number }>;
     overall_sentiment: number;
     peer_count: number;
+    video_query?: string;
   };
 }
 
