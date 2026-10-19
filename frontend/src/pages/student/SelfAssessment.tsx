@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
 import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface SelfData {
@@ -12,6 +13,7 @@ interface SelfData {
 }
 
 export default function SelfAssessment() {
+  const t = useT();
   const { milestone, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
   const { data, loading, error, reload } = useFetch(
     () => (milestone ? api<SelfData>("/api/student/self-assessment", { params: { milestone_id: milestone.id } }) : Promise.resolve(null)),
@@ -36,7 +38,7 @@ export default function SelfAssessment() {
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone || !data) return <Alert>No evaluation period is available yet.</Alert>;
+  if (!milestone || !data) return <Alert>{t("No evaluation period is available yet.")}</Alert>;
 
   const saved = !!data.submission;
   const closed = milestone.status !== "active";
@@ -45,13 +47,13 @@ export default function SelfAssessment() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (missing.length) {
-      setMsg({ kind: "error", text: `Please rate every skill (missing: ${missing.map((m) => m.skill_name).join(", ")}).` });
+      setMsg({ kind: "error", text: t("Please rate every skill (missing: {skills}).", { skills: missing.map((m) => t(m.skill_name)).join(t(", ")) }) });
       return;
     }
     setBusy(true);
     try {
       await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings } });
-      setMsg({ kind: "success", text: "Self-assessment saved." });
+      setMsg({ kind: "success", text: t("Self-assessment saved.") });
       setEditing(false);
       reload();
       reloadProjects();
@@ -64,26 +66,26 @@ export default function SelfAssessment() {
 
   return (
     <div>
-      <PageHeader title="Self-Assessment" subtitle="Rate your own soft skills on a 1–5 Likert scale." />
+      <PageHeader title={t("Self-Assessment")} subtitle={t("Rate your own soft skills on a 1–5 Likert scale.")} />
 
       <div className="space-y-4">
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         {saved && (
           <Alert kind="info">
-            <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Last saved on {fmtDate(data.submission!.created_at, true)}. {!closed && "Tap Edit to change your ratings."}</span>
+            <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> {t("Last saved on {date}.", { date: fmtDate(data.submission!.created_at, true) })} {!closed && t("Tap Edit to change your ratings.")}</span>
           </Alert>
         )}
-        {closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
+        {closed && <Alert kind="warning" title={t("Evaluation Period Closed")}>{t("The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.")}</Alert>}
 
         <form onSubmit={submit} className="card p-6">
-          <h2 className="font-semibold text-slate-900">5-Skill Rubric</h2>
-          <p className="text-sm text-slate-500">Move each slider; the descriptor below explains what each level means.</p>
+          <h2 className="font-semibold text-slate-900">{t("5-Skill Rubric")}</h2>
+          <p className="text-sm text-slate-500">{t("Move each slider; the descriptor below explains what each level means.")}</p>
           <div className="mt-2 divide-y divide-slate-100">
             {data.competencies.map((c) => (
               <RatingSlider
                 key={c.id}
-                label={c.skill_name}
-                description={!touched.has(c.id) && !saved ? "Not rated yet" : undefined}
+                label={t(c.skill_name)}
+                description={!touched.has(c.id) && !saved ? t("Not rated yet") : undefined}
                 value={ratings[c.id] ?? 3}
                 rubric={c.rubric}
                 disabled={closed || !editing}
@@ -98,11 +100,11 @@ export default function SelfAssessment() {
             <div className="mt-6 flex justify-end gap-2">
               {saved &&
                 (editing ? (
-                  <button type="button" className="btn-outline" onClick={load}><X className="h-4 w-4" /> Cancel</button>
+                  <button type="button" className="btn-outline" onClick={load}><X className="h-4 w-4" /> {t("Cancel")}</button>
                 ) : (
-                  <button type="button" className="btn-outline" onClick={() => { setEditing(true); setMsg(null); }}><Pencil className="h-4 w-4" /> Edit</button>
+                  <button type="button" className="btn-outline" onClick={() => { setEditing(true); setMsg(null); }}><Pencil className="h-4 w-4" /> {t("Edit")}</button>
                 ))}
-              <button className="btn-primary" disabled={busy || !editing}>Save</button>
+              <button className="btn-primary" disabled={busy || !editing}>{t("Save")}</button>
             </div>
           )}
         </form>

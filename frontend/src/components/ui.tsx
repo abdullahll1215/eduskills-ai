@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import type { Level } from "../api/types";
+import { locale, translate as t } from "../i18n";
 
 export function useFetch<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -37,10 +38,10 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export function Loading({ label = "Loading..." }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
-      <Loader2 className="h-5 w-5 animate-spin" /> {label}
+      <Loader2 className="h-5 w-5 animate-spin" /> {label ?? t("Loading...")}
     </div>
   );
 }
@@ -61,7 +62,7 @@ export function Alert({ kind = "info", title, children, onClose }: { kind?: "inf
         {children && <div className={title ? "mt-1" : ""}>{children}</div>}
       </div>
       {onClose && (
-        <button onClick={onClose} className="opacity-60 hover:opacity-100" aria-label="Dismiss">
+        <button onClick={onClose} className="opacity-60 hover:opacity-100" aria-label={t("Dismiss")}>
           <X className="h-4 w-4" />
         </button>
       )}
@@ -94,13 +95,13 @@ export function StatCard({ label, value, hint, tone = "default", icon }: { label
 export const LEVEL_LABEL: Record<Level, string> = { ALIGNED: "Aligned", MODERATE_GAP: "Moderate", CRITICAL_GAP: "Critical" };
 
 export function LevelBadge({ level, label }: { level?: Level | string | null; label?: string }) {
-  if (!level) return <span className="badge bg-slate-100 text-slate-500">{label ?? "Pending"}</span>;
+  if (!level) return <span className="badge bg-slate-100 text-slate-500">{label ?? t("Pending")}</span>;
   const cls = {
     ALIGNED: "bg-emerald-100 text-emerald-700",
     MODERATE_GAP: "bg-amber-100 text-amber-700",
     CRITICAL_GAP: "bg-red-100 text-red-700",
   }[level as Level] ?? "bg-slate-100 text-slate-600";
-  return <span className={`badge ${cls}`}>{label ?? LEVEL_LABEL[level as Level] ?? level}</span>;
+  return <span className={`badge ${cls}`}>{label ?? t(LEVEL_LABEL[level as Level] ?? level)}</span>;
 }
 
 export function StatusBadge({ status }: { status: string }) {
@@ -115,7 +116,7 @@ export function StatusBadge({ status }: { status: string }) {
     acknowledged: "bg-amber-100 text-amber-700",
     resolved: "bg-emerald-100 text-emerald-700",
   };
-  return <span className={`badge ${map[status] ?? "bg-slate-100 text-slate-600"}`}>{status}</span>;
+  return <span className={`badge ${map[status] ?? "bg-slate-100 text-slate-600"}`}>{t(status)}</span>;
 }
 
 export function Empty({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
@@ -135,7 +136,7 @@ export function Modal({ open, title, children, onClose, footer }: { open: boolea
       <div className="card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="font-semibold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label={t("Close")}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -153,7 +154,7 @@ export function fmt(v: number | null | undefined, digits = 1) {
 export function fmtDate(v?: string | null, withTime = false) {
   if (!v) return "—";
   const d = new Date(v.endsWith("Z") || v.includes("+") ? v : v + "Z");
-  return withTime ? d.toLocaleString() : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return withTime ? d.toLocaleString(locale()) : d.toLocaleDateString(locale(), { year: "numeric", month: "short", day: "numeric" });
 }
 
 export function initials(name: string) {
@@ -206,10 +207,10 @@ export function DialogHost() {
   if (req.kind === "file") {
     const rows = (req.value ?? "").trim().split("\n").map((r) => r.split(","));
     return (
-      <Modal open title={req.title ?? "File"} onClose={() => close(null)}
+      <Modal open title={req.title ?? t("File")} onClose={() => close(null)}
         footer={<>
-          <button className="btn-outline" onClick={() => navigator.clipboard?.writeText(req.value ?? "").then(() => setCopied(true)).catch(() => setCopied(false))}>{copied ? "Copied" : "Copy CSV"}</button>
-          <button className="btn-primary" onClick={() => close(null)}>Close</button>
+          <button className="btn-outline" onClick={() => navigator.clipboard?.writeText(req.value ?? "").then(() => setCopied(true)).catch(() => setCopied(false))}>{copied ? t("Copied") : t("Copy CSV")}</button>
+          <button className="btn-primary" onClick={() => close(null)}>{t("Close")}</button>
         </>}>
         <div className="overflow-x-auto">
           <table className="min-w-full text-xs">
@@ -226,10 +227,10 @@ export function DialogHost() {
     );
   }
   return (
-    <Modal open title={req.kind === "confirm" ? "Please confirm" : "Enter a value"} onClose={() => close(req.kind === "confirm" ? false : null)}
+    <Modal open title={req.kind === "confirm" ? t("Please confirm") : t("Enter a value")} onClose={() => close(req.kind === "confirm" ? false : null)}
       footer={<>
-        <button className="btn-ghost" onClick={() => close(req.kind === "confirm" ? false : null)}>Cancel</button>
-        <button className="btn-primary" onClick={() => close(req.kind === "confirm" ? true : text)}>{req.kind === "confirm" ? "Confirm" : "OK"}</button>
+        <button className="btn-ghost" onClick={() => close(req.kind === "confirm" ? false : null)}>{t("Cancel")}</button>
+        <button className="btn-primary" onClick={() => close(req.kind === "confirm" ? true : text)}>{req.kind === "confirm" ? t("Confirm") : t("OK")}</button>
       </>}>
       <p className="text-sm text-slate-700">{req.message}</p>
       {req.kind === "prompt" && <input className="input mt-3" value={text} onChange={(e) => setText(e.target.value)} autoFocus />}

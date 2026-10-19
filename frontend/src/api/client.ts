@@ -1,4 +1,5 @@
 import { showFile } from "../components/ui";
+import { translate } from "../i18n";
 
 const TOKEN_KEY = "eduskills.token";
 /** Self-contained build: the API runs inside the browser (see src/demo). */
@@ -34,7 +35,7 @@ export class ApiError extends Error {
 function errorMessage(data: unknown, fallback: string): string {
   if (data && typeof data === "object" && "detail" in data) {
     const detail = (data as { detail: unknown }).detail;
-    if (typeof detail === "string") return detail;
+    if (typeof detail === "string") return translate(detail);
     if (Array.isArray(detail)) return detail.map((d) => d.msg ?? String(d)).join("; ");
   }
   return fallback;

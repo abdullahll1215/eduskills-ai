@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import { Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
 
 interface Log {
   id: string;
@@ -13,21 +14,22 @@ interface Log {
 }
 
 export default function Audit() {
+  const t = useT();
   const [action, setAction] = useState("");
   const { data, loading } = useFetch(() => api<Log[]>("/api/admin/audit-logs", { params: { action } }), [action]);
 
   return (
     <div>
-      <PageHeader title="Audit Logs" subtitle="Every administrative and evaluation action is logged. Peer reviewers appear as “System” to preserve anonymity." />
+      <PageHeader title={t("Audit Logs")} subtitle={t("Every administrative and evaluation action is logged. Peer reviewers appear as “System” to preserve anonymity.")} />
       <div className="card mb-4 p-4">
-        <input className="input sm:w-80" placeholder="Filter by action (e.g. moderation, evaluation, settings)" value={action} onChange={(e) => setAction(e.target.value)} />
+        <input className="input sm:w-80" placeholder={t("Filter by action (e.g. moderation, evaluation, settings)")} value={action} onChange={(e) => setAction(e.target.value)} />
       </div>
       {loading && !data ? (
         <Loading />
       ) : (
         <div className="card overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100">
-            <thead className="bg-slate-50"><tr><th className="th">Time</th><th className="th">Actor</th><th className="th">Action</th><th className="th">Entity</th><th className="th">Details</th></tr></thead>
+            <thead className="bg-slate-50"><tr><th className="th">{t("Time")}</th><th className="th">{t("Actor")}</th><th className="th">{t("Action")}</th><th className="th">{t("Entity")}</th><th className="th">{t("Details")}</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {data?.map((l) => (
                 <tr key={l.id}>

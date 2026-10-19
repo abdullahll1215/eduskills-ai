@@ -1,6 +1,7 @@
 import { ExternalLink, PlayCircle } from "lucide-react";
 import { useState } from "react";
 import type { Metric, Resource } from "../api/types";
+import { useT } from "../i18n";
 
 // Default YouTube searches per soft skill, used when the AI did not suggest a more specific one.
 const QUERIES: Record<string, { en: string; ar: string }> = {
@@ -29,7 +30,7 @@ const AR_SKILL: Record<string, string> = {
 function VideoCard({ href, thumb, label, skill, title, subtitle, cta, rtl }: { href: string; thumb?: string | null; label: string; skill: string; title: string; subtitle: string; cta: string; rtl?: boolean }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   return (
-    <a href={href} target="_blank" rel="noreferrer" dir={rtl ? "rtl" : "ltr"} className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 transition hover:border-brand-300 hover:shadow-md sm:flex-row">
+    <a href={href} target="_blank" rel="noreferrer" dir={rtl ? "rtl" : undefined} className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 transition hover:border-brand-300 hover:shadow-md sm:flex-row">
       <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-gradient-to-br from-brand-600 to-indigo-400 sm:w-64">
         {thumb && !thumbFailed ? (
           <img src={thumb} alt="" className="h-full w-full object-cover" onError={() => setThumbFailed(true)} />
@@ -52,6 +53,7 @@ function VideoCard({ href, thumb, label, skill, title, subtitle, cta, rtl }: { h
 
 /** Recommended videos (English and Arabic) for the skill the student most needs to develop. */
 export default function VideoSuggestion({ metrics, resources, aiQuery }: { metrics: Metric[]; resources: Resource[]; aiQuery?: string }) {
+  const t = useT();
   const focus = [...metrics].sort((a, b) => (b.direction === "overestimate" ? b.gap : 0) - (a.direction === "overestimate" ? a.gap : 0) || a.external - b.external)[0];
   if (!focus) return null;
   const q = QUERIES[focus.code] ?? { en: `${focus.skill} soft skill tutorial`, ar: `تطوير مهارة ${focus.skill}` };
@@ -63,26 +65,26 @@ export default function VideoSuggestion({ metrics, resources, aiQuery }: { metri
 
   return (
     <div className="mt-6">
-      <div className="text-sm font-semibold text-slate-800">Recommended videos</div>
+      <div className="text-sm font-semibold text-slate-800">{t("Recommended videos")}</div>
       <div className="mt-2 grid gap-3">
         {video ? (
           <VideoCard
             href={video.url}
             thumb={vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : null}
-            label="Focus skill"
-            skill={focus.skill}
+            label={t("Focus skill")}
+            skill={t(focus.skill)}
             title={video.title}
             subtitle={`${video.provider || "YouTube"}${video.duration ? ` · ${video.duration}` : ""}`}
-            cta="Watch on YouTube"
+            cta={t("Watch on YouTube")}
           />
         ) : (
           <VideoCard
             href={search(aiQuery || q.en)}
-            label="Focus skill"
-            skill={focus.skill}
-            title={`How to improve your ${focus.skill.toLowerCase()}`}
-            subtitle={`Videos matched to your ${focus.skill} gap (Δ ${focus.gap.toFixed(1)})`}
-            cta="Watch on YouTube"
+            label={t("Focus skill")}
+            skill={t(focus.skill)}
+            title={t("How to improve your {skill}", { skill: t(focus.skill).toLowerCase() })}
+            subtitle={t("Videos matched to your {skill} gap (Δ {gap})", { skill: t(focus.skill), gap: focus.gap.toFixed(1) })}
+            cta={t("Watch on YouTube")}
           />
         )}
         <VideoCard

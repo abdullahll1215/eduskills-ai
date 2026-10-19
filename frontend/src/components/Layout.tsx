@@ -23,6 +23,8 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useT } from "../i18n";
+import LanguageMenu from "./LanguageMenu";
 import ErrorBoundary from "./ErrorBoundary";
 import { fmtDate, initials } from "./ui";
 
@@ -72,12 +74,13 @@ const NAV: Record<string, { portal: string; items: NavItem[] }> = {
 };
 
 function Brand({ portal }: { portal: string }) {
+  const t = useT();
   return (
     <div className="px-5 py-5">
       <div className="flex items-center gap-2 text-xl font-bold text-brand-600">
         <Activity className="h-5 w-5" /> EduSkills AI
       </div>
-      <div className="mt-0.5 text-xs text-slate-500">{portal}</div>
+      <div className="mt-0.5 text-xs text-slate-500">{t(portal)}</div>
     </div>
   );
 }
@@ -86,6 +89,7 @@ function Notifications() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const navigate = useNavigate();
+  const t = useT();
   const load = () => api<Notification[]>("/api/notifications").then(setItems).catch(() => undefined);
   useEffect(() => {
     load();
@@ -103,28 +107,28 @@ function Notifications() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications">
+      <button onClick={() => setOpen(!open)} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={t("Notifications")}>
         <Bell className="h-5 w-5" />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
             {unread}
           </span>
         )}
       </button>
       {open && (
-        <div className="card absolute right-0 z-40 mt-2 w-80 overflow-hidden sm:w-96">
+        <div className="card absolute end-0 z-40 mt-2 w-80 overflow-hidden sm:w-96">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <span className="text-sm font-semibold">Notifications</span>
+            <span className="text-sm font-semibold">{t("Notifications")}</span>
             {unread > 0 && (
               <button className="text-xs text-brand-600 hover:underline" onClick={() => api("/api/notifications/read-all", { method: "POST" }).then(load)}>
-                Mark all read
+                {t("Mark all read")}
               </button>
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {items.length === 0 && <div className="px-4 py-8 text-center text-sm text-slate-400">No notifications</div>}
+            {items.length === 0 && <div className="px-4 py-8 text-center text-sm text-slate-400">{t("No notifications")}</div>}
             {items.map((n) => (
-              <button key={n.id} onClick={() => openItem(n)} className={`block w-full border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50 ${n.is_read ? "" : "bg-brand-50/50"}`}>
+              <button key={n.id} onClick={() => openItem(n)} className={`block w-full border-b border-slate-50 px-4 py-3 text-start hover:bg-slate-50 ${n.is_read ? "" : "bg-brand-50/50"}`}>
                 <div className="flex items-start gap-2">
                   {!n.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-600" />}
                   <div className="min-w-0">
@@ -146,6 +150,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const t = useT();
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
@@ -166,19 +171,19 @@ export default function Layout() {
             }
           >
             {item.icon}
-            {item.label}
+            {t(item.label)}
           </NavLink>
         ))}
       </nav>
       <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-4">
-        <Link to="/profile" className="flex min-w-0 flex-1 items-center gap-3" title="My profile">
+        <Link to="/profile" className="flex min-w-0 flex-1 items-center gap-3" title={t("My profile")}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">{initials(user.full_name)}</div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-slate-800">{user.full_name}</div>
-            <div className="text-xs capitalize text-slate-500">{user.role}</div>
+            <div className="text-xs capitalize text-slate-500">{t(user.role)}</div>
           </div>
         </Link>
-        <button onClick={logout} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Log out" aria-label="Log out">
+        <button onClick={logout} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title={t("Log out")} aria-label={t("Log out")}>
           <LogOut className="h-4 w-4" />
         </button>
       </div>
@@ -187,7 +192,7 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-slate-200 bg-white lg:block">{sidebar}</aside>
+      <aside className="fixed inset-y-0 start-0 hidden w-60 border-e border-slate-200 bg-white lg:block">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside className="h-full w-64 bg-white" onClick={(e) => e.stopPropagation()}>
@@ -195,15 +200,16 @@ export default function Layout() {
           </aside>
         </div>
       )}
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+      <div className="flex min-w-0 flex-1 flex-col lg:ps-60">
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur sm:px-8">
-          <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+          <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label={t("Open menu")}>
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <div className="hidden text-sm text-slate-400 lg:block">AI-Driven Soft Skills Assessment & Development System</div>
+          <div className="hidden text-sm text-slate-400 lg:block">{t("AI-Driven Soft Skills Assessment & Development System")}</div>
           <div className="flex items-center gap-1">
+            <LanguageMenu />
             <Notifications />
-            <Link to="/profile" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Profile">
+            <Link to="/profile" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={t("Profile")}>
               <UserIcon className="h-5 w-5" />
             </Link>
           </div>

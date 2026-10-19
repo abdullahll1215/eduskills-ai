@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Milestone } from "../../api/types";
 import { useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
 
 export interface InstructorProject {
   id: string;
@@ -43,11 +44,12 @@ export function ProjectPicker({ projects, value, onChange }: { projects: Instruc
 }
 
 export function MilestoneSelect({ milestones, value, onChange }: { milestones: Milestone[]; value?: string; onChange: (id: string) => void }) {
+  const t = useT();
   return (
     <select className="input w-auto" value={value} onChange={(e) => onChange(e.target.value)}>
       {milestones.map((m) => (
         <option key={m.id} value={m.id}>
-          M{m.number} · {m.name} {m.status === "active" ? "(open)" : m.status === "planned" ? "(planned)" : ""}
+          M{m.number} · {m.name} {m.status === "active" ? t("(open)") : m.status === "planned" ? t("(planned)") : ""}
         </option>
       ))}
     </select>

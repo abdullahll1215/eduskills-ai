@@ -3,6 +3,9 @@ import { FormEvent, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency } from "../../api/types";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
+
+const KINDS: Record<string, string> = { article: "Article", video: "Video", course: "Course", exercise: "Exercise" };
 
 interface ResourceRow {
   id: string;
@@ -16,6 +19,7 @@ interface ResourceRow {
 }
 
 export default function Rubric() {
+  const t = useT();
   const { data: comps, loading, reload } = useFetch(() => api<Competency[]>("/api/competencies"));
   const { data: resources, reload: reloadRes } = useFetch(() => api<ResourceRow[]>("/api/admin/resources"));
   const [editing, setEditing] = useState<Competency | null>(null);
@@ -30,7 +34,7 @@ export default function Rubric() {
     try {
       await api(`/api/admin/competencies/${editing.id}`, { method: "PUT", body: { skill_name: editing.skill_name, description: editing.description, rubric: editing.rubric } });
       setEditing(null);
-      setMsg({ kind: "success", text: "Rubric updated." });
+      setMsg({ kind: "success", text: t("Rubric updated.") });
       reload();
     } catch (err) {
       setMsg({ kind: "error", text: (err as Error).message });
@@ -50,7 +54,7 @@ export default function Rubric() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Rubric & Learning Resources" subtitle="Soft-skill taxonomy (WEF-aligned), Likert descriptors and the curated resources repository used for AI recommendations." />
+      <PageHeader title={t("Rubric & Learning Resources")} subtitle={t("Soft-skill taxonomy (WEF-aligned), Likert descriptors and the curated resources repository used for AI recommendations.")} />
       {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -58,16 +62,16 @@ export default function Rubric() {
           editing?.id === c.id ? (
             <form key={c.id} onSubmit={saveComp} className="card space-y-3 p-5 md:col-span-2">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div><label className="label">Skill name</label><input className="input" value={editing.skill_name} onChange={(e) => setEditing({ ...editing, skill_name: e.target.value })} /></div>
-                <div><label className="label">Description</label><input className="input" value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+                <div><label className="label">{t("Skill name")}</label><input className="input" value={editing.skill_name} onChange={(e) => setEditing({ ...editing, skill_name: e.target.value })} /></div>
+                <div><label className="label">{t("Description")}</label><input className="input" value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
               </div>
               {["1", "2", "3", "4", "5"].map((lv) => (
                 <div key={lv} className="flex items-center gap-3">
                   <span className="w-6 text-center font-bold text-brand-600">{lv}</span>
-                  <input className="input" value={editing.rubric[lv] ?? ""} onChange={(e) => setEditing({ ...editing, rubric: { ...editing.rubric, [lv]: e.target.value } })} />
+                  <input className="input" aria-label={t("Level {n} descriptor", { n: lv })} value={editing.rubric[lv] ?? ""} onChange={(e) => setEditing({ ...editing, rubric: { ...editing.rubric, [lv]: e.target.value } })} />
                 </div>
               ))}
-              <div className="flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button><button className="btn-primary">Save rubric</button></div>
+              <div className="flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={() => setEditing(null)}>{t("Cancel")}</button><button className="btn-primary">{t("Save rubric")}</button></div>
             </form>
           ) : (
             <div key={c.id} className="card p-5">
@@ -76,7 +80,7 @@ export default function Rubric() {
                   <h3 className="font-semibold text-slate-900">{c.skill_name}</h3>
                   <p className="text-xs text-slate-500">{c.description}</p>
                 </div>
-                <button className="btn-outline px-3 py-1 text-xs" onClick={() => setEditing(c)}>Edit</button>
+                <button className="btn-outline px-3 py-1 text-xs" onClick={() => setEditing(c)}>{t("Edit")}</button>
               </div>
               <ol className="mt-3 space-y-1 text-xs text-slate-600">
                 {Object.entries(c.rubric).map(([k, v]) => <li key={k}><b className="text-brand-600">{k}</b> — {v}</li>)}
@@ -87,33 +91,33 @@ export default function Rubric() {
       </div>
 
       <div className="card p-6">
-        <h2 className="font-semibold text-slate-900">Learning resources repository</h2>
+        <h2 className="font-semibold text-slate-900">{t("Learning resources repository")}</h2>
         <form onSubmit={addRes} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <select className="input" required value={res.competency_id} onChange={(e) => setRes({ ...res, competency_id: e.target.value })}>
-            <option value="">Skill...</option>
+            <option value="">{t("Skill...")}</option>
             {comps?.map((c) => <option key={c.id} value={c.id}>{c.skill_name}</option>)}
           </select>
-          <input className="input lg:col-span-2" required placeholder="Title" value={res.title} onChange={(e) => setRes({ ...res, title: e.target.value })} />
-          <input className="input" placeholder="Provider" value={res.provider} onChange={(e) => setRes({ ...res, provider: e.target.value })} />
-          <input className="input" required placeholder="https://..." value={res.url} onChange={(e) => setRes({ ...res, url: e.target.value })} />
+          <input className="input lg:col-span-2" required placeholder={t("Title")} value={res.title} onChange={(e) => setRes({ ...res, title: e.target.value })} />
+          <input className="input" placeholder={t("Provider")} value={res.provider} onChange={(e) => setRes({ ...res, provider: e.target.value })} />
+          <input className="input" dir="ltr" required placeholder="https://..." value={res.url} onChange={(e) => setRes({ ...res, url: e.target.value })} />
           <div className="flex gap-2">
             <select className="input" value={res.kind} onChange={(e) => setRes({ ...res, kind: e.target.value })}>
-              <option value="article">Article</option><option value="video">Video</option><option value="course">Course</option><option value="exercise">Exercise</option>
+              {Object.entries(KINDS).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
             </select>
-            <button className="btn-primary px-3"><Plus className="h-4 w-4" /></button>
+            <button className="btn-primary px-3" aria-label={t("Add resource")} title={t("Add resource")}><Plus className="h-4 w-4" /></button>
           </div>
         </form>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100">
-            <thead className="bg-slate-50"><tr><th className="th">Skill</th><th className="th">Title</th><th className="th">Provider</th><th className="th">Type</th><th className="th"></th></tr></thead>
+            <thead className="bg-slate-50"><tr><th className="th">{t("Skill")}</th><th className="th">{t("Title")}</th><th className="th">{t("Provider")}</th><th className="th">{t("Type")}</th><th className="th"></th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {resources?.map((r) => (
                 <tr key={r.id}>
                   <td className="td">{r.skill}</td>
                   <td className="td font-medium"><a href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-brand-600">{r.title} <ExternalLink className="h-3 w-3" /></a></td>
                   <td className="td">{r.provider}</td>
-                  <td className="td capitalize">{r.kind}</td>
-                  <td className="td text-right"><button className="btn-ghost p-1.5 text-red-500" onClick={() => api(`/api/admin/resources/${r.id}`, { method: "DELETE" }).then(reloadRes)}><Trash2 className="h-4 w-4" /></button></td>
+                  <td className="td capitalize">{KINDS[r.kind] ? t(KINDS[r.kind]) : r.kind}</td>
+                  <td className="td text-end"><button className="btn-ghost p-1.5 text-red-500" aria-label={t("Delete resource")} title={t("Delete resource")} onClick={() => api(`/api/admin/resources/${r.id}`, { method: "DELETE" }).then(reloadRes)}><Trash2 className="h-4 w-4" /></button></td>
                 </tr>
               ))}
             </tbody>

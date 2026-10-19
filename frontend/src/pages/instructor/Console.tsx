@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, download } from "../../api/client";
 import type { Milestone } from "../../api/types";
 import { Alert, Empty, Loading, PageHeader, StatCard, StatusBadge, fmt, fmtDate, useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
 import { MilestoneSelect, ProjectPicker, useInstructorSelection } from "./shared";
 
 interface Row {
@@ -36,6 +37,7 @@ interface Overview {
 }
 
 export default function InstructorConsole() {
+  const t = useT();
   const sel = useInstructorSelection();
   const { data, loading, error, reload } = useFetch(
     () => (sel.project ? api<Overview>("/api/instructor/overview", { params: { project_id: sel.project.id, milestone_id: sel.milestoneId } }) : Promise.resolve(null)),
@@ -46,28 +48,28 @@ export default function InstructorConsole() {
 
   if (sel.loading || (loading && !data)) return <Loading />;
   if (sel.error || error) return <Alert kind="error">{sel.error || error}</Alert>;
-  if (!sel.project) return <Empty title="No projects yet">Create a project under “Projects & Teams” to start evaluating students.</Empty>;
+  if (!sel.project) return <Empty title={t("No projects yet")}>{t("Create a project under “Projects & Teams” to start evaluating students.")}</Empty>;
   if (!data) return <Loading />;
 
   const rows = data.rows.filter((r) => `${r.full_name} ${r.student_number} ${r.team}`.toLowerCase().includes(search.toLowerCase()));
 
   const moderate = async (id: string, action: "approve" | "remove") => {
     await api(`/api/instructor/moderation/${id}`, { body: { action } });
-    setMsg(action === "approve" ? "Comment approved and left visible (false flag)." : "Comment removed anonymously. The action was logged.");
+    setMsg(action === "approve" ? t("Comment approved and left visible (false flag).") : t("Comment removed anonymously. The action was logged."));
     reload();
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Instructor Analytics Console"
-        subtitle={`${data.project.title} — monitor cohort performance and moderate flagged peer feedback.`}
+        title={t("Instructor Analytics Console")}
+        subtitle={t("{project} — monitor cohort performance and moderate flagged peer feedback.", { project: data.project.title })}
         actions={
           <>
             <ProjectPicker projects={sel.projects ?? []} value={sel.project.id} onChange={(id) => sel.set({ project: id })} />
             <MilestoneSelect milestones={data.milestones} value={data.milestone.id} onChange={(id) => sel.set({ milestone: id })} />
             <button className="btn-outline" onClick={() => download("/api/instructor/export.csv", `cohort-M${data.milestone.number}.csv`, { project_id: data.project.id, milestone_id: data.milestone.id })}>
-              <Download className="h-4 w-4" /> Export
+              <Download className="h-4 w-4" /> {t("Export")}
             </button>
           </>
         }
@@ -75,31 +77,31 @@ export default function InstructorConsole() {
       {msg && <Alert kind="success" onClose={() => setMsg(null)}>{msg}</Alert>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Students" value={data.stats.total_students} icon={<Users className="h-5 w-5 text-brand-500" />} />
-        <StatCard label="Pending Reviews" value={data.stats.pending_reviews} hint="Ready for your evaluation" icon={<FileText className="h-5 w-5 text-amber-500" />} />
-        <StatCard label="At-Risk Groups" value={data.stats.at_risk_groups} hint={data.at_risk_teams.join(", ") || "None"} icon={<AlertTriangle className="h-5 w-5 text-red-500" />} />
-        <StatCard label="Flagged Comments" value={data.stats.flagged_comments} icon={<ShieldCheck className="h-5 w-5 text-emerald-500" />} />
+        <StatCard label={t("Total Students")} value={data.stats.total_students} icon={<Users className="h-5 w-5 text-brand-500" />} />
+        <StatCard label={t("Pending Reviews")} value={data.stats.pending_reviews} hint={t("Ready for your evaluation")} icon={<FileText className="h-5 w-5 text-amber-500" />} />
+        <StatCard label={t("At-Risk Groups")} value={data.stats.at_risk_groups} hint={data.at_risk_teams.join(t(", ")) || t("None")} icon={<AlertTriangle className="h-5 w-5 text-red-500" />} />
+        <StatCard label={t("Flagged Comments")} value={data.stats.flagged_comments} icon={<ShieldCheck className="h-5 w-5 text-emerald-500" />} />
       </div>
 
-      {data.stats.at_risk_groups === 0 && data.stats.completed > 0 && <Alert kind="success">No high-priority risks detected — normal cohort status.</Alert>}
+      {data.stats.at_risk_groups === 0 && data.stats.completed > 0 && <Alert kind="success">{t("No high-priority risks detected — normal cohort status.")}</Alert>}
 
       <div className="card overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-semibold text-slate-900">Cohort Evaluation Status · M{data.milestone.number}</h2>
-          <input className="input sm:w-56" placeholder="Search student..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <h2 className="font-semibold text-slate-900">{t("Cohort Evaluation Status · M{n}", { n: data.milestone.number })}</h2>
+          <input className="input sm:w-56" placeholder={t("Search student...")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100">
             <thead className="bg-slate-50">
               <tr>
-                <th className="th">Student Name</th>
-                <th className="th">Team</th>
-                <th className="th">360° Progress</th>
-                <th className="th">Peer Avg</th>
-                <th className="th">Inst Score</th>
-                <th className="th">Final Ext.</th>
-                <th className="th">Detected Gap</th>
-                <th className="th">Status</th>
+                <th className="th">{t("Student Name")}</th>
+                <th className="th">{t("Team")}</th>
+                <th className="th">{t("360° Progress")}</th>
+                <th className="th">{t("Peer Avg")}</th>
+                <th className="th">{t("Inst Score")}</th>
+                <th className="th">{t("Final Ext.")}</th>
+                <th className="th">{t("Detected Gap")}</th>
+                <th className="th">{t("Status")}</th>
                 <th className="th"></th>
               </tr>
             </thead>
@@ -109,25 +111,25 @@ export default function InstructorConsole() {
                   <td className="td font-medium text-slate-900">{r.full_name}</td>
                   <td className="td whitespace-nowrap text-slate-500">{r.team ?? "—"}</td>
                   <td className="td whitespace-nowrap text-xs text-slate-500">
-                    {r.self_done ? "Self ✓" : "Self —"} · Peers {r.peer_count} · {r.instructor_done ? "Inst ✓" : "Inst —"}
+                    {r.self_done ? t("Self ✓") : t("Self —")} · {t("Peers {n}", { n: r.peer_count })} · {r.instructor_done ? t("Inst ✓") : t("Inst —")}
                   </td>
                   <td className="td">{fmt(r.peer_avg)}</td>
                   <td className="td">{fmt(r.instructor_avg)}</td>
                   <td className="td font-semibold text-brand-600">{fmt(r.external)}</td>
                   <td className="td">{r.max_skill_gap != null ? fmt(r.max_skill_gap) : "—"}</td>
                   <td className="td whitespace-nowrap"><StatusBadge status={r.status} /></td>
-                  <td className="td text-right">
+                  <td className="td text-end">
                     <Link
                       to={`/instructor/students/${r.student_id}?project=${data.project.id}&milestone=${data.milestone.id}`}
                       className={r.ready_for_instructor ? "btn-primary px-3 py-1.5 text-xs" : "btn-outline px-3 py-1.5 text-xs"}
                     >
-                      {r.ready_for_instructor ? "Evaluate" : "View"}
+                      {r.ready_for_instructor ? t("Evaluate") : t("View")}
                     </Link>
                   </td>
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="td py-10 text-center text-slate-400">No students found.</td></tr>
+                <tr><td colSpan={9} className="td py-10 text-center text-slate-400">{t("No students found.")}</td></tr>
               )}
             </tbody>
           </table>
@@ -136,21 +138,21 @@ export default function InstructorConsole() {
 
       <div className="card p-5">
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 font-semibold text-slate-900"><ShieldCheck className="h-5 w-5 text-brand-600" /> Flagged Peer Feedback (Review Queue)</h2>
-          <span className={`badge ${data.flagged.length ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{data.flagged.length} Pending</span>
+          <h2 className="flex items-center gap-2 font-semibold text-slate-900"><ShieldCheck className="h-5 w-5 text-brand-600" /> {t("Flagged Peer Feedback (Review Queue)")}</h2>
+          <span className={`badge ${data.flagged.length ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{t("{n} Pending", { n: data.flagged.length })}</span>
         </div>
         <div className="mt-4 space-y-3">
-          {data.flagged.length === 0 && <div className="text-sm text-slate-500">No flagged comments. 🎉</div>}
+          {data.flagged.length === 0 && <div className="text-sm text-slate-500">{t("No flagged comments.")} 🎉</div>}
           {data.flagged.map((f) => (
             <div key={f.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <div className="text-xs text-slate-500">Target: {f.target} | Reviewer: Anonymous | {f.milestone} · {fmtDate(f.created_at)}</div>
+                <div className="text-xs text-slate-500">{t("Target: {target} | Reviewer: Anonymous | {milestone} · {date}", { target: f.target, milestone: f.milestone, date: fmtDate(f.created_at) })}</div>
                 <div className="mt-1 text-sm font-medium italic text-slate-800">"{f.comment}"</div>
-                <div className="mt-1 text-xs text-red-600">Flag Reason: {f.reason}</div>
+                <div className="mt-1 text-xs text-red-600">{t("Flag Reason: {reason}", { reason: f.reason })}</div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button className="btn-outline" onClick={() => moderate(f.id, "approve")}>Approve</button>
-                <button className="btn-danger" onClick={() => moderate(f.id, "remove")}>Delete Comment</button>
+                <button className="btn-outline" onClick={() => moderate(f.id, "approve")}>{t("Approve")}</button>
+                <button className="btn-danger" onClick={() => moderate(f.id, "remove")}>{t("Delete Comment")}</button>
               </div>
             </div>
           ))}
@@ -159,7 +161,7 @@ export default function InstructorConsole() {
 
       {data.interventions.length > 0 && (
         <div className="card p-5">
-          <h2 className="font-semibold text-slate-900">Open Advisor Interventions</h2>
+          <h2 className="font-semibold text-slate-900">{t("Open Advisor Interventions")}</h2>
           <div className="mt-3 divide-y divide-slate-100">
             {data.interventions.map((i) => (
               <div key={i.id} className="flex items-start justify-between gap-3 py-3">

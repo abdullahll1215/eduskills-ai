@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
+import { useT } from "../../i18n";
 import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface PeersData {
@@ -31,16 +32,17 @@ const STATUS_LABEL: Record<Target["status"], string> = {
 };
 
 function TargetPicker({ value, onPick, version }: { value: Target | null; onPick: (t: Target | null) => void; version: number }) {
+  const t = useT();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<Target[]>([]);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       api<Target[]>("/api/student/evaluation-targets", { params: { q } }).then(setResults).catch(() => undefined);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [q, version]);
 
   useEffect(() => {
@@ -58,18 +60,18 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
           <div className="text-sm font-semibold text-slate-900">{value.full_name}</div>
           <div className="text-xs text-slate-500">{[value.student_number, value.team, value.project].filter(Boolean).join(" · ")}</div>
         </div>
-        <button type="button" className="btn-ghost p-2" onClick={() => onPick(null)} aria-label="Change student"><X className="h-4 w-4" /></button>
+        <button type="button" className="btn-ghost p-2" onClick={() => onPick(null)} aria-label={t("Change student")}><X className="h-4 w-4" /></button>
       </div>
     );
   }
   return (
     <div ref={box} className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       <input
         id="target-search"
-        className="input pl-9"
+        className="input ps-9"
         dir="auto"
-        placeholder="Search any student by name or university ID..."
+        placeholder={t("Search any student by name or university ID...")}
         value={q}
         onFocus={() => setOpen(true)}
         onChange={(e) => {
@@ -79,29 +81,29 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
       />
       {open && (
         <div className="card absolute z-30 mt-1 max-h-80 w-full overflow-y-auto py-1">
-          {results.length === 0 && <div className="px-4 py-3 text-sm text-slate-500">No students found.</div>}
-          {results.map((t) => {
-            const ok = t.status === "available";
+          {results.length === 0 && <div className="px-4 py-3 text-sm text-slate-500">{t("No students found.")}</div>}
+          {results.map((r) => {
+            const ok = r.status === "available";
             return (
               <button
-                key={t.id}
+                key={r.id}
                 type="button"
                 disabled={!ok}
-                className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-start hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
-                  onPick(t);
+                  onPick(r);
                   setOpen(false);
                   setQ("");
                 }}
               >
                 <span>
-                  <span className="block text-sm font-medium text-slate-800">{t.full_name}</span>
-                  <span className="block text-xs text-slate-500">{[t.student_number, t.team, t.project].filter(Boolean).join(" · ")}</span>
+                  <span className="block text-sm font-medium text-slate-800">{r.full_name}</span>
+                  <span className="block text-xs text-slate-500">{[r.student_number, r.team, r.project].filter(Boolean).join(" · ")}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {t.is_teammate && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">Teammate</span>}
-                  {!ok && <span className="text-[11px] text-slate-400">{STATUS_LABEL[t.status]}</span>}
-                  {t.status === "evaluated" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                  {r.is_teammate && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{t("Teammate")}</span>}
+                  {!ok && <span className="text-[11px] text-slate-400">{t(STATUS_LABEL[r.status])}</span>}
+                  {r.status === "evaluated" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
                 </span>
               </button>
             );
@@ -120,6 +122,7 @@ interface Check {
 }
 
 export default function PeerEvaluation() {
+  const t = useT();
   const { milestone, loading: l1, reload: reloadProjects } = useStudentMilestone();
   const { data: comps, loading: l2, error } = useFetch(() => api<Competency[]>("/api/competencies"));
   const { data, reload } = useFetch(
@@ -150,10 +153,10 @@ export default function PeerEvaluation() {
       setCheck(null);
       return;
     }
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       api<Check>("/api/student/peer-check", { body: { comment } }).then(setCheck).catch(() => undefined);
     }, 500);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [comment]);
 
   if (l1 || l2) return <Loading />;
@@ -163,7 +166,7 @@ export default function PeerEvaluation() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!target) return setMsg({ kind: "error", text: "Select a student to evaluate." });
+    if (!target) return setMsg({ kind: "error", text: t("Select a student to evaluate.") });
     setBusy(true);
     try {
       const res = await api<{ flagged: boolean; message: string }>("/api/student/peer-evaluations", {
@@ -183,7 +186,7 @@ export default function PeerEvaluation() {
 
   return (
     <div>
-      <PageHeader title="Give Feedback" subtitle="Evaluate any student on the platform. Your identity stays anonymous and your feedback is confidential." />
+      <PageHeader title={t("Give Feedback")} subtitle={t("Evaluate any student on the platform. Your identity stays anonymous and your feedback is confidential.")} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <form onSubmit={submit} className="card p-6">
@@ -192,37 +195,37 @@ export default function PeerEvaluation() {
               <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>
             </div>
           )}
-          <label className="label">Student to evaluate</label>
+          <label className="label">{t("Student to evaluate")}</label>
           <TargetPicker value={target} onPick={setTarget} version={version} />
 
           <div className="mt-6 border-t border-slate-100 pt-5">
-            <h3 className="font-semibold text-slate-900">Quantitative Assessment (1-5 Scale)</h3>
+            <h3 className="font-semibold text-slate-900">{t("Quantitative Assessment (1-5 Scale)")}</h3>
             <div className="divide-y divide-slate-50">
               {comps.map((c) => (
-                <RatingSlider key={c.id} label={c.skill_name} value={ratings[c.id] ?? 3} rubric={c.rubric} onChange={(v) => setRatings({ ...ratings, [c.id]: v })} />
+                <RatingSlider key={c.id} label={t(c.skill_name)} value={ratings[c.id] ?? 3} rubric={c.rubric} onChange={(v) => setRatings({ ...ratings, [c.id]: v })} />
               ))}
             </div>
           </div>
 
           <div className="mt-4 border-t border-slate-100 pt-5">
-            <h3 className="font-semibold text-slate-900">Qualitative Feedback</h3>
-            <p className="mb-2 text-xs text-slate-500">Provide constructive examples of the student's performance.</p>
+            <h3 className="font-semibold text-slate-900">{t("Qualitative Feedback")}</h3>
+            <p className="mb-2 text-xs text-slate-500">{t("Provide constructive examples of the student's performance.")}</p>
             <textarea
               className="input min-h-[110px]"
               value={comment}
               required
               onChange={(e) => setComment(e.target.value)}
-              placeholder="e.g., Ahmed is great at organizing meetings, but sometimes struggles to accept alternative ideas..."
+              placeholder={t("e.g., Ahmed is great at organizing meetings, but sometimes struggles to accept alternative ideas...")}
             />
             {check && (
               <div className="mt-2 space-y-1">
                 {check.is_toxic ? (
                   <span className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
-                    <ShieldAlert className="h-3.5 w-3.5" /> {check.reason} — this comment will be held for instructor review
+                    <ShieldAlert className="h-3.5 w-3.5" /> {t("{reason} — this comment will be held for instructor review", { reason: check.reason ?? "" })}
                   </span>
                 ) : check.is_constructive ? (
                   <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                    <ShieldCheck className="h-3.5 w-3.5" /> Constructive Feedback Verified
+                    <ShieldCheck className="h-3.5 w-3.5" /> {t("Constructive Feedback Verified")}
                   </span>
                 ) : (
                   <ul className="list-inside list-disc text-xs text-amber-700">
@@ -234,15 +237,15 @@ export default function PeerEvaluation() {
           </div>
 
           <div className="mt-6 flex justify-end gap-2">
-            <button type="button" className="btn-ghost" onClick={reset}>Cancel</button>
-            <button className="btn-primary" disabled={busy || !target}>Submit Evaluation</button>
+            <button type="button" className="btn-ghost" onClick={reset}>{t("Cancel")}</button>
+            <button className="btn-primary" disabled={busy || !target}>{t("Submit Evaluation")}</button>
           </div>
         </form>
 
         <div className="space-y-4">
           {data && data.peers.length > 0 && (
             <div className="card p-5">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><Users className="h-4 w-4 text-brand-600" /> Your team</h3>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><Users className="h-4 w-4 text-brand-600" /> {t("Your team")}</h3>
               <ul className="mt-3 space-y-1">
                 {data.peers.map((p) => (
                   <li key={p.id}>
@@ -250,21 +253,20 @@ export default function PeerEvaluation() {
                       type="button"
                       disabled={p.evaluated || !p.available}
                       onClick={() => setTarget({ id: p.id, full_name: p.full_name, student_number: null, team: null, project: null, is_teammate: true, status: "available" })}
-                      className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-transparent"
+                      className="flex w-full items-center justify-between rounded-md px-2 py-1 text-start text-sm hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-transparent"
                     >
                       <span className="text-slate-700">{p.full_name}</span>
-                      {p.evaluated ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <span className="text-xs text-slate-400">{p.available ? "Pending" : "Waiting"}</span>}
+                      {p.evaluated ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <span className="text-xs text-slate-400">{p.available ? t("Pending") : t("Waiting")}</span>}
                     </button>
                   </li>
                 ))}
               </ul>
-              <div className="mt-3 text-xs text-slate-500">{pending.length === 0 ? "All teammates evaluated 🎉" : `${pending.length} remaining · tap a name to evaluate`}</div>
+              <div className="mt-3 text-xs text-slate-500">{pending.length === 0 ? t("All teammates evaluated 🎉") : t("{n} remaining · tap a name to evaluate", { n: pending.length })}</div>
             </div>
           )}
           <div className="card p-5 text-xs leading-relaxed text-slate-500">
-            <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-800"><ShieldCheck className="h-4 w-4 text-brand-600" /> How anonymity works</div>
-            Your identity is replaced with a salted SHA-256 hash before storage and comments are encrypted. Students only see feedback once at least {data?.min_peers ?? 3} reviews are received, and
-            comments pass an AI content filter for toxicity and bias.
+            <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-800"><ShieldCheck className="h-4 w-4 text-brand-600" /> {t("How anonymity works")}</div>
+            {t("Your identity is replaced with a salted SHA-256 hash before storage and comments are encrypted. Students only see feedback once at least {n} reviews are received, and comments pass an AI content filter for toxicity and bias.", { n: data?.min_peers ?? 3 })}
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { DEMO } from "./api/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider } from "./context/AuthContext";
+import { LanguageProvider } from "./i18n";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -13,14 +14,18 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <MemoryRouter>
         <AuthProvider>
           <ErrorBoundary>
-            <App />
+            <LanguageProvider>
+              <App />
+            </LanguageProvider>
           </ErrorBoundary>
         </AuthProvider>
       </MemoryRouter>
     ) : (
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <LanguageProvider>
+            <App />
+          </LanguageProvider>
         </AuthProvider>
       </BrowserRouter>
     )}
