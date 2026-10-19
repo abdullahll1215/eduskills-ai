@@ -9,3 +9,4 @@ frontend/dist/
 .ruff_cache/
 frontend/dist-demo/
 eduskills-ai.zip
+*.tsbuildinfo
