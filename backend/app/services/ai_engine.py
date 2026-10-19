@@ -2,6 +2,7 @@
 with a deterministic fallback template based on numeric data only (UC-05 E4a)."""
 import json
 import logging
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -94,7 +95,89 @@ Write the developmental report JSON now. Focus on the skill with the largest del
 # -------------------------------------------------------------- API calls --
 
 
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+_resolved_models: dict[str, str] = {}  # configured model -> model actually available for the key
+
+
+def _is_gemini(cfg: AIConfig) -> bool:
+    return "generativelanguage.googleapis.com" in cfg.base_url
+
+
+def _provider_error(resp: httpx.Response) -> str:
+    try:
+        return resp.json().get("error", {}).get("message") or resp.text[:300]
+    except ValueError:
+        return resp.text[:300]
+
+
+def _pick_gemini_model(cfg: AIConfig) -> str | None:
+    """Asks Google which models this key can use and picks the newest general-purpose Flash model."""
+    resp = httpx.get(f"{GEMINI_BASE}/models", params={"pageSize": 200}, headers={"x-goog-api-key": cfg.api_key}, timeout=cfg.timeout)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini API error {resp.status_code}: {_provider_error(resp)}")
+    names = [
+        m["name"].removeprefix("models/")
+        for m in resp.json().get("models", [])
+        if "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+    bad = ("lite", "image", "tts", "live", "audio", "embedding", "vision", "learnlm", "gemma", "thinking", "exp")
+
+    def version(name: str) -> float:
+        m = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
+        return float(m.group(1)) if m else 0.0
+
+    for pattern in (r"^gemini-[\d.]+-flash$", r"^gemini-[\d.]+-flash", r"^gemini-[\d.]+-pro$", r"^gemini"):
+        found = [n for n in names if re.search(pattern, n) and not any(b in n for b in bad)]
+        if found:
+            return max(found, key=version)
+    return names[0] if names else None
+
+
+def _gemini(cfg: AIConfig, messages: list[dict], json_mode: bool, max_tokens: int) -> str:
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    contents = [
+        {"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]}
+        for m in messages
+        if m["role"] != "system"
+    ]
+    # Gemini 2.5+ models spend part of the output budget on thinking, so keep the limit generous.
+    config: dict = {"temperature": 0.4, "maxOutputTokens": max(max_tokens, 1024)}
+    if json_mode:
+        config["responseMimeType"] = "application/json"
+    body: dict = {"contents": contents, "generationConfig": config}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+
+    model = _resolved_models.get(cfg.model, cfg.model).removeprefix("models/")
+    for attempt in range(2):
+        resp = httpx.post(
+            f"{GEMINI_BASE}/models/{model}:generateContent",
+            headers={"x-goog-api-key": cfg.api_key, "Content-Type": "application/json"},
+            json=body,
+            timeout=cfg.timeout,
+        )
+        if resp.status_code == 404 and attempt == 0:
+            # The configured model is not available for this key (renamed or retired): pick one that is.
+            replacement = _pick_gemini_model(cfg)
+            if replacement and replacement != model:
+                logger.warning("Gemini model %s not found, using %s", model, replacement)
+                _resolved_models[cfg.model] = model = replacement
+                continue
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini API error {resp.status_code}: {_provider_error(resp)}")
+        data = resp.json()
+        parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        if not text:
+            reason = (data.get("candidates") or [{}])[0].get("finishReason") or data.get("promptFeedback", {}).get("blockReason")
+            raise RuntimeError(f"Gemini returned an empty answer ({reason or 'no text'})")
+        return text
+    raise RuntimeError("Gemini model could not be resolved")
+
+
 def _chat(cfg: AIConfig, messages: list[dict], json_mode: bool = False, max_tokens: int = 900) -> str:
+    if _is_gemini(cfg):
+        return _gemini(cfg, messages, json_mode, max_tokens)
     payload: dict = {"model": cfg.model, "messages": messages, "temperature": 0.4, "max_tokens": max_tokens}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -104,8 +187,13 @@ def _chat(cfg: AIConfig, messages: list[dict], json_mode: bool = False, max_toke
         json=payload,
         timeout=cfg.timeout,
     )
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError(f"AI API error {resp.status_code}: {_provider_error(resp)}")
     return resp.json()["choices"][0]["message"]["content"]
+
+
+def active_model(cfg: AIConfig) -> str:
+    return _resolved_models.get(cfg.model, cfg.model) if _is_gemini(cfg) else cfg.model
 
 
 def check_connection(cfg: AIConfig) -> tuple[bool, str]:
@@ -115,10 +203,10 @@ def check_connection(cfg: AIConfig) -> tuple[bool, str]:
     if not cfg.enabled:
         return False, "AI generation is disabled - the local fallback engine is active."
     try:
-        out = _chat(cfg, [{"role": "user", "content": "Reply with the single word: OK"}], max_tokens=5)
-        return True, f"Connected to {cfg.model}: {out.strip()[:40]}"
+        out = _chat(cfg, [{"role": "user", "content": "Reply with the single word: OK"}], max_tokens=16)
+        return True, f"Connected to {active_model(cfg)}: {out.strip()[:40]}"
     except Exception as exc:  # noqa: BLE001 - surface any provider error to the admin
-        return False, f"Connection failed: {exc.__class__.__name__}: {str(exc)[:200]}"
+        return False, f"Connection failed: {str(exc)[:300]}"
 
 
 def moderate(db: Session, text: str) -> nlp.FilterResult:
@@ -261,7 +349,7 @@ def ai_report(cfg: AIConfig, prompt: str) -> GeneratedReport:
         actionable_steps=[str(s) for s in data.get("actionable_steps", [])][:6],
         johari_insight=str(data.get("johari_insight", "")),
         source="ai",
-        model=cfg.model,
+        model=active_model(cfg),
     )
 
 

@@ -5,7 +5,7 @@ import {
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
 } from "./logic";
 import { sha256 } from "./sha256";
-import { aiConfig, chatCompletion } from "./ai";
+import { activeModel, aiConfig, chatCompletion } from "./ai";
 
 class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -343,7 +343,7 @@ route("POST", "/api/chat", async ({ db, user, body }) => {
   }
   if (!reply) reply = chatReply(db, user, message);
   db.chat.push({ id: uid(), user_id: user.id, role: "user", content: body.message, created_at: nowIso() });
-  const m = { id: uid(), user_id: user.id, role: "assistant", content: reply, created_at: nowIso(), source, model: source === "ai" ? cfg.model : null };
+  const m = { id: uid(), user_id: user.id, role: "assistant", content: reply, created_at: nowIso(), source, model: source === "ai" ? activeModel(cfg) : null };
   db.chat.push(m);
   return { ...m, ai_error };
 });
@@ -718,9 +718,9 @@ route("POST", "/api/admin/ai/test", async ({ db, user }) => {
   if (!cfg.key) return { ok: false, mode: "fallback", message: "No API key configured - the local fallback engine is active." };
   if (!cfg.usable) return { ok: false, mode: "fallback", message: "AI generation is disabled - the local fallback engine is active." };
   try {
-    const out = await chatCompletion(cfg, "You are a connection test.", [{ role: "user", content: "Reply with the single word: OK" }], false, 10);
+    const out = await chatCompletion(cfg, "You are a connection test.", [{ role: "user", content: "Reply with the single word: OK" }], false, 16);
     log(db, user.id, "ai.connection_test", "system", null, "ok=true");
-    return { ok: true, mode: "genai", message: `Connected to ${cfg.model}: ${out.trim().slice(0, 40)}` };
+    return { ok: true, mode: "genai", message: `Connected to ${activeModel(cfg)}: ${out.trim().slice(0, 40)}` };
   } catch (e) {
     return { ok: false, mode: "fallback", message: `Connection failed: ${(e as Error).message}` };
   }
