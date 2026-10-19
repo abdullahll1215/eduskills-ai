@@ -19,6 +19,7 @@ from ..models import (
     Milestone,
     Moderation,
     Project,
+    Role,
     SkillRating,
     User,
     utcnow,
@@ -27,7 +28,7 @@ from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, PeerEvaluationIn, Self
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
 from ..services.common import competency_out, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
-from ..services.settings_store import scoring
+from ..services.settings_store import get_raw, scoring
 
 router = APIRouter(prefix="/api/student", tags=["student"])
 
@@ -294,23 +295,86 @@ def submit_peer_evaluation(
     }
 
 
-@router.get("/feedback")
-def received_feedback(milestone_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+def _feedback_summary(db: Session, student_id: str, m: Milestone) -> dict:
     """Peer feedback summary. Comments are only released once the minimum number of reviewers is reached,
-    so a single reviewer cannot be identified."""
-    m = get_or_404(db, Milestone, milestone_id, "Milestone")
-    _require_enrollment(db, user, m)
+    so a single reviewer cannot be identified. Flagged or removed comments are never included."""
     cfg = scoring(db)
-    snap = analytics.snapshot(db, user.id, m.id, cfg)
+    snap = analytics.snapshot(db, student_id, m.id, cfg)
     released = snap.peer_count >= cfg.min_peer_evaluations
     comments = list(snap.peer_comments) if released else []
     random.shuffle(comments)
+    inst = db.scalar(
+        select(Evaluation).where(Evaluation.milestone_id == m.id, Evaluation.target_id == student_id, Evaluation.eval_type == EvalType.INSTRUCTOR.value)
+    )
+    notes = decrypt(inst.notes_enc) if inst else ""
     return {
         "peer_count": snap.peer_count,
         "min_peers": cfg.min_peer_evaluations,
         "released": released,
         "comments": [{"text": c, "sentiment": nlp.sentiment(c)} for c in comments],
         "skills": [{"name": s.name, "code": s.code, "peer_avg": s.peer_avg if released else None} for s in snap.skills],
+        "instructor_comments": [{"text": notes, "created_at": inst.created_at}] if notes else [],
+    }
+
+
+@router.get("/feedback")
+def received_feedback(milestone_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    m = get_or_404(db, Milestone, milestone_id, "Milestone")
+    _require_enrollment(db, user, m)
+    return _feedback_summary(db, user.id, m)
+
+
+def _require_public_profiles(db: Session):
+    if get_raw(db, "public_feedback_profiles") != "true":
+        raise HTTPException(403, "Viewing other students' feedback is turned off by the administrator")
+
+
+@router.get("/directory")
+def student_directory(q: str = "", user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Search students on the platform by name or university ID."""
+    _require_public_profiles(db)
+    query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True))
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
+    out = []
+    for u in db.scalars(query.order_by(User.full_name).limit(20)):
+        enr = db.scalar(select(Enrollment).where(Enrollment.user_id == u.id))
+        out.append({
+            "id": u.id,
+            "full_name": u.full_name,
+            "student_number": u.student_number,
+            "team": enr.team.team_name if enr and enr.team else None,
+            "project": db.get(Project, enr.project_id).title if enr else None,
+            "is_me": u.id == user.id,
+        })
+    return out
+
+
+@router.get("/profiles/{student_id}/feedback")
+def student_profile_feedback(student_id: str, milestone_id: str | None = None, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Another student's anonymous peer feedback and instructor comments, milestone by milestone."""
+    _require_public_profiles(db)
+    target = get_or_404(db, User, student_id, "Student")
+    if target.role != Role.STUDENT.value or not target.is_active:
+        raise HTTPException(404, "Student not found")
+    enr = db.scalar(select(Enrollment).where(Enrollment.user_id == target.id))
+    if not enr:
+        return {"student": {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": None}, "milestones": [], "milestone": None, "feedback": None}
+    project = db.get(Project, enr.project_id)
+    milestones = [m for m in project.milestones if m.status != "planned"]
+    cfg = scoring(db)
+    m = next((x for x in milestones if x.id == milestone_id), None)
+    if m is None:  # default to the latest milestone whose feedback is already released
+        released = [x for x in milestones if analytics.snapshot(db, target.id, x.id, cfg).peer_count >= cfg.min_peer_evaluations]
+        m = (released or milestones or [None])[-1]
+    audit.log(db, user, "feedback.profile_viewed", "user", target.id)
+    db.commit()
+    return {
+        "student": {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": enr.team.team_name if enr.team else None},
+        "milestones": [milestone_out(x) for x in milestones],
+        "milestone": milestone_out(m) if m else None,
+        "feedback": _feedback_summary(db, target.id, m) if m else None,
     }
 
 

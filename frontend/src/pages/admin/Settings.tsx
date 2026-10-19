@@ -55,7 +55,7 @@ export default function AdminSettings() {
       <PageHeader title="Configuration & AI" subtitle="Scoring model, blind-spot thresholds and Generative AI API parameters (UC-08)." />
       {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
 
-      <form onSubmit={(e) => save(e, ["instructor_weight", "peer_weight", "moderate_threshold", "critical_threshold", "instructor_peer_warning", "min_peer_evaluations", "require_self_before_peer", "retention_days"])} className="card p-6">
+      <form onSubmit={(e) => save(e, ["instructor_weight", "peer_weight", "moderate_threshold", "critical_threshold", "instructor_peer_warning", "min_peer_evaluations", "require_self_before_peer", "retention_days", "public_feedback_profiles"])} className="card p-6">
         <h2 className="flex items-center gap-2 font-semibold text-slate-900"><Calculator className="h-5 w-5 text-brand-600" /> Weighted scoring & blind-spot model</h2>
         <div className="mt-2 rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-600">
           External = {wI.toFixed(2)} × Instructor + {wP.toFixed(2)} × PeerAverage &nbsp;·&nbsp; δ = |External − Self| &nbsp;·&nbsp; δ ≤ {form.moderate_threshold} aligned, ≤ {form.critical_threshold} moderate, &gt; {form.critical_threshold} critical
@@ -69,6 +69,7 @@ export default function AdminSettings() {
           <div><label className="label">Min. peer evaluations</label><input type="number" min="1" className="input" value={form.min_peer_evaluations ?? ""} onChange={(e) => set("min_peer_evaluations", e.target.value)} /></div>
           <div><label className="label">Data retention (days)</label><input type="number" min="30" className="input" value={form.retention_days ?? ""} onChange={(e) => set("retention_days", e.target.value)} /></div>
           <label className="mt-6 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.require_self_before_peer === "true"} onChange={(e) => set("require_self_before_peer", String(e.target.checked))} /> Require self-assessment before peer review</label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.public_feedback_profiles === "true"} onChange={(e) => set("public_feedback_profiles", String(e.target.checked))} /> Let students search other students and read their anonymous feedback</label>
         </div>
         {Math.abs(wI + wP - 1) > 0.001 && <p className="mt-2 text-xs text-red-600">Weights must add up to 1.0</p>}
         <div className="mt-5 flex justify-end"><button className="btn-primary">Apply scoring configuration</button></div>

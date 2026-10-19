@@ -200,3 +200,18 @@ def login_as(client, email, password):
 def test_ai_base_url_must_be_a_url(client, admin):
     r = client.put("/api/admin/settings", headers=admin, json={"values": {"ai_base_url": "AQ.someKeyPastedInTheWrongBox"}})
     assert r.status_code == 422
+
+
+def test_student_directory_and_profile_feedback(client, khalid, admin):
+    results = client.get("/api/student/directory", headers=khalid, params={"q": "saad"}).json()
+    assert len(results) == 1 and results[0]["full_name"].startswith("Saad")
+    saad = results[0]["id"]
+    m1 = next(m for m in client.get("/api/student/projects", headers=khalid).json()[0]["milestones"] if m["number"] == 1)
+    r = client.get(f"/api/student/profiles/{saad}/feedback", headers=khalid, params={"milestone_id": m1["id"]}).json()
+    fb = r["feedback"]
+    assert fb["released"] and fb["comments"] and fb["instructor_comments"]
+    assert all("[Removed" not in c["text"] for c in fb["comments"])
+    # The admin can turn the feature off
+    client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "false"}})
+    assert client.get("/api/student/directory", headers=khalid).status_code == 403
+    client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "true"}})

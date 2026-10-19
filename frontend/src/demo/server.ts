@@ -213,14 +213,50 @@ route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
   await generateReport(db, body.target_id, m.id);
   return { id: ev.id, flagged: v.is_toxic, message: v.is_toxic ? "Your comment was flagged by the AI content filter and held for instructor review. Your ratings were recorded." : "Peer evaluation submitted anonymously" };
 });
+function feedbackSummary(db: DemoDB, sid: string, m: any) {
+  const c = scoring(db);
+  const s = snapshot(db, sid, m.id, c);
+  const released = s.peerCount >= c.minPeers;
+  const comments = released ? [...s.comments].sort(() => Math.random() - 0.5) : [];
+  const inst = db.evaluations.find((e) => e.milestone_id === m.id && e.target_id === sid && e.eval_type === "instructor");
+  return {
+    peer_count: s.peerCount, min_peers: c.minPeers, released,
+    comments: comments.map((t) => ({ text: t, sentiment: sentiment(t) })),
+    skills: s.skills.map((x) => ({ name: x.name, code: x.code, peer_avg: released ? x.peer : null })),
+    instructor_comments: inst?.notes ? [{ text: inst.notes, created_at: inst.created_at }] : [],
+  };
+}
 route("GET", "/api/student/feedback", ({ db, user, q }) => {
   studentOnly(user);
   const { m } = msForStudent(db, user, q.get("milestone_id"));
+  return feedbackSummary(db, user.id, m);
+});
+const publicProfiles = (db: DemoDB) => setting(db, "public_feedback_profiles") === "true" || fail(403, "Viewing other students' feedback is turned off by the administrator");
+route("GET", "/api/student/directory", ({ db, user, q }) => {
+  studentOnly(user);
+  publicProfiles(db);
+  const term = (q.get("q") ?? "").trim().toLowerCase();
+  return db.users
+    .filter((u) => u.role === "student" && u.is_active && (!term || `${u.full_name} ${u.student_number ?? ""}`.toLowerCase().includes(term)))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name)).slice(0, 20)
+    .map((u) => {
+      const e = db.enrollments.find((x) => x.user_id === u.id);
+      return { id: u.id, full_name: u.full_name, student_number: u.student_number, team: e ? teamName(db, e.team_id) : null, project: e ? db.projects.find((p) => p.id === e.project_id)?.title ?? null : null, is_me: u.id === user.id };
+    });
+});
+route("GET", "/api/student/profiles/:sid/feedback", ({ db, user, p, q }) => {
+  studentOnly(user);
+  publicProfiles(db);
+  const t = db.users.find((u) => u.id === p.sid && u.role === "student" && u.is_active) ?? fail(404, "Student not found");
+  const e = db.enrollments.find((x) => x.user_id === t.id);
+  const info = { id: t.id, full_name: t.full_name, student_number: t.student_number, team: e ? teamName(db, e.team_id) : null };
+  if (!e) return { student: info, milestones: [], milestone: null, feedback: null };
+  const mss = msOf(db, e.project_id).filter((m) => m.status !== "planned");
   const c = scoring(db);
-  const s = snapshot(db, user.id, m.id, c);
-  const released = s.peerCount >= c.minPeers;
-  const comments = released ? [...s.comments].sort(() => Math.random() - 0.5) : [];
-  return { peer_count: s.peerCount, min_peers: c.minPeers, released, comments: comments.map((t) => ({ text: t, sentiment: sentiment(t) })), skills: s.skills.map((x) => ({ name: x.name, code: x.code, peer_avg: released ? x.peer : null })) };
+  const released = mss.filter((x) => snapshot(db, t.id, x.id, c).peerCount >= c.minPeers);
+  const m = mss.find((x) => x.id === q.get("milestone_id")) ?? released[released.length - 1] ?? mss[mss.length - 1];
+  log(db, user.id, "feedback.profile_viewed", "user", t.id);
+  return { student: info, milestones: mss.map(msOut), milestone: m ? msOut(m) : null, feedback: m ? feedbackSummary(db, t.id, m) : null };
 });
 route("GET", "/api/student/dashboard", ({ db, user, q }) => {
   studentOnly(user);

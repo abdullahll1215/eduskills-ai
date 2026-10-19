@@ -16,6 +16,7 @@ export const DEFAULTS: Record<string, string> = {
   ai_model: "gemini-2.5-flash",
   ai_api_key: "",
   retention_days: "730",
+  public_feedback_profiles: "true",
 };
 
 export const setting = (db: DemoDB, k: string) => db.settings[k] ?? DEFAULTS[k] ?? "";

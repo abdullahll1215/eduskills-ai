@@ -25,6 +25,8 @@ DEFAULTS: dict[str, str] = {
     "ai_model": "",
     "ai_api_key": "",  # stored encrypted
     "retention_days": "730",
+    # Students may search the platform and read other students' (anonymous) peer and instructor feedback
+    "public_feedback_profiles": "true",
 }
 
 SECRET_KEYS = {"ai_api_key"}
