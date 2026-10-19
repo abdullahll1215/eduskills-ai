@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 _tmp = Path(tempfile.mkdtemp(prefix="eduskills-test-"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp / 'test.db'}"
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_tmp / 'test.db'}")
 os.environ["BACKUP_DIR"] = str(_tmp / "backups")
 os.environ["AI_API_KEY"] = ""  # always exercise the deterministic fallback engine in tests
 os.environ["SEED_DEMO_DATA"] = "true"

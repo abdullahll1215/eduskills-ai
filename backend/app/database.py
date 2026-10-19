@@ -2,8 +2,9 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
-from .config import get_settings
+from .config import ON_VERCEL, get_settings
 
 settings = get_settings()
 
@@ -14,7 +15,11 @@ if settings.database_url.startswith("sqlite"):
     if db_path and db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+engine_kwargs: dict = {"pool_pre_ping": True}
+if ON_VERCEL and not settings.database_url.startswith("sqlite"):
+    # Serverless instances are short-lived: open a connection per request (Neon pools on its side).
+    engine_kwargs = {"poolclass": NullPool}
+engine = create_engine(settings.database_url, connect_args=connect_args, future=True, **engine_kwargs)
 
 if settings.database_url.startswith("sqlite"):
 

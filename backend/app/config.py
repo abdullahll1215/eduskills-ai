@@ -1,4 +1,6 @@
 """Application configuration loaded from environment variables (or a .env file)."""
+import hashlib
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -37,6 +39,41 @@ class Settings(BaseSettings):
     seed_demo_data: bool = True
 
 
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+
+
+def _normalise_db_url(url: str) -> str:
+    """Accepts the URLs Vercel/Neon provide (postgres://...) and maps them to the SQLAlchemy driver."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + url[len("postgresql://"):]
+    return url
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Vercel's Postgres (Neon) integration exposes the connection string under these names.
+    for name in ("DATABASE_URL", "POSTGRES_URL", "POSTGRES_URL_NON_POOLING"):
+        if os.environ.get(name):
+            s.database_url = os.environ[name]
+            break
+    else:
+        if ON_VERCEL:
+            # Read-only file system: fall back to a temporary SQLite file (data resets on cold starts).
+            s.database_url = "sqlite:////tmp/eduskills.db"
+    s.database_url = _normalise_db_url(s.database_url)
+    defaults = Settings.model_fields
+    if ON_VERCEL and not s.database_url.startswith("sqlite"):
+        # The repository is public, so the built-in secrets must never be used in production.
+        # Unless SECRET_KEY / ANONYMIZATION_SALT are set, derive stable private values from the
+        # database credentials, which only the Vercel project knows.
+        seed_value = hashlib.sha256(("eduskills:" + s.database_url).encode()).hexdigest()
+        if s.secret_key == defaults["secret_key"].default:
+            s.secret_key = seed_value
+        if s.anonymization_salt == defaults["anonymization_salt"].default:
+            s.anonymization_salt = hashlib.sha256((seed_value + ":salt").encode()).hexdigest()
+    if ON_VERCEL:
+        s.backup_dir = Path("/tmp/eduskills-backups")
+    return s

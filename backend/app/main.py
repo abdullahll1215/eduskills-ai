@@ -19,11 +19,19 @@ settings = get_settings()
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
+def init_db():
+    """Creates tables and seeds demo data. Safe to call from several serverless instances at once."""
+    try:
+        Base.metadata.create_all(engine)
+        if settings.seed_demo_data:
+            seed.run()
+    except Exception:  # noqa: BLE001 - another instance won the race; the data is already there
+        logging.getLogger("eduskills").warning("Database initialisation skipped", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(engine)
-    if settings.seed_demo_data:
-        seed.run()
+    init_db()
     yield
 
 

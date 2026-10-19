@@ -44,6 +44,16 @@ def _require_open(milestone: Milestone):
         raise HTTPException(409, "The evaluation period for this milestone is closed")  # UC-01 E1a
 
 
+def run_job(bg: BackgroundTasks, fn, *args):
+    """Background task locally; inline on serverless platforms, which freeze the process after the response."""
+    from ..config import ON_VERCEL
+
+    if ON_VERCEL:
+        fn(*args)
+    else:
+        bg.add_task(fn, *args)
+
+
 def trigger_report(student_id: str, milestone_id: str, force: bool = False):
     """Background job: UC-04 blind spot detection then UC-05 narrative generation."""
     db = SessionLocal()
@@ -170,7 +180,7 @@ def submit_self_assessment(
     db.add(ev)
     audit.log(db, user, "evaluation.self_submitted", "evaluation", ev.id, f"milestone=M{m.number}")
     db.commit()
-    bg.add_task(trigger_report, user.id, m.id)  # UC-01 step 7: check 360° completion
+    run_job(bg, trigger_report, user.id, m.id)  # UC-01 step 7: check 360° completion
     return {"id": ev.id, "created_at": ev.created_at, "message": "Self-assessment submitted and locked"}
 
 
@@ -274,7 +284,7 @@ def submit_peer_evaluation(
     else:
         audit.notify(db, body.target_id, "You received new anonymous peer feedback", f"Milestone M{m.number}", "feedback", "/student")
     db.commit()
-    bg.add_task(trigger_report, body.target_id, m.id)
+    run_job(bg, trigger_report, body.target_id, m.id)
     return {
         "id": ev.id,
         "flagged": verdict.is_toxic,

@@ -37,6 +37,17 @@ Open http://localhost:5173
 > Production mode: run `npm run build` in `frontend/`; the backend then serves the built app at http://localhost:8000.
 > Docker: `docker compose up --build` (app + PostgreSQL).
 
+### النشر على Vercel (Deploy to Vercel)
+The repository is ready for Vercel (`vercel.json`, `api/index.py`, `requirements.txt`):
+the React app is served as static files and the FastAPI backend runs as a Python serverless function at `/api/*`.
+
+1. On vercel.com: **Add New → Project → Import** this GitHub repository → **Deploy** (no settings to change).
+2. In the project: **Storage → Create Database → Neon (Postgres)** and connect it to the project
+   (this sets `DATABASE_URL` automatically). Without it, data lives in a temporary SQLite file and resets.
+3. **Settings → Environment Variables**: add `AI_API_KEY` = your Google AI Studio key (Gemini for all users).
+   Optional: `SECRET_KEY`, `ANONYMIZATION_SALT` (otherwise derived privately from the database credentials).
+4. **Deployments → Redeploy**. Every later push to `main` deploys automatically.
+
 ### الحسابات التجريبية (Demo accounts) — password: `Password123!`
 | Role | Email |
 |---|---|

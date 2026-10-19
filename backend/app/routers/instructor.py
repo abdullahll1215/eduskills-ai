@@ -36,7 +36,7 @@ from ..services.common import (
     validate_ratings,
 )
 from ..services.settings_store import scoring
-from .student import _report_out, trigger_report
+from .student import _report_out, run_job, trigger_report
 
 router = APIRouter(prefix="/api/instructor", tags=["instructor"])
 
@@ -284,7 +284,7 @@ def submit_instructor_evaluation(
     db.add(ev)
     audit.log(db, user, "evaluation.instructor_submitted", "evaluation", ev.id, f"milestone=M{m.number} warnings={len(warnings)}")
     db.commit()
-    bg.add_task(trigger_report, body.target_id, m.id, True)
+    run_job(bg, trigger_report, body.target_id, m.id, True)
     final = analytics.snapshot(db, body.target_id, m.id, cfg)
     return {"saved": True, "warnings": warnings, "external": final.overall_external, "id": ev.id}
 
@@ -302,7 +302,7 @@ def moderate(evaluation_id: str, body: ModerationIn, bg: BackgroundTasks, user: 
         ev.comment_enc = encrypt("[Removed by moderator]")
     audit.log(db, user, f"moderation.{body.action}", "evaluation", ev.id, ev.flag_reason or "")
     db.commit()
-    bg.add_task(trigger_report, ev.target_id, ev.milestone_id, True)
+    run_job(bg, trigger_report, ev.target_id, ev.milestone_id, True)
     return {"ok": True, "status": ev.moderation_status}
 
 
