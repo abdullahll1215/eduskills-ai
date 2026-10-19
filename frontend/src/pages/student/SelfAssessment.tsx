@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Pencil, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
@@ -21,14 +21,18 @@ export default function SelfAssessment() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // A saved assessment is read-only until the student taps Edit, so ratings are not changed by accident.
+  const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     if (!data) return;
     const init: Record<string, number> = {};
     data.competencies.forEach((c) => (init[c.id] = data.submission?.ratings[c.id] ?? 3));
     setRatings(init);
     setTouched(new Set(data.submission ? data.competencies.map((c) => c.id) : []));
-  }, [data]);
+    setEditing(!data.submission);
+  };
+  useEffect(load, [data]);
 
   if (l1 || (loading && !data)) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
@@ -48,6 +52,7 @@ export default function SelfAssessment() {
     try {
       await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings } });
       setMsg({ kind: "success", text: "Self-assessment saved." });
+      setEditing(false);
       reload();
       reloadProjects();
     } catch (err) {
@@ -65,7 +70,7 @@ export default function SelfAssessment() {
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         {saved && (
           <Alert kind="info">
-            <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Last saved on {fmtDate(data.submission!.created_at, true)}. {!closed && "You can change your ratings and save again while the evaluation period is open."}</span>
+            <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Last saved on {fmtDate(data.submission!.created_at, true)}. {!closed && "Tap Edit to change your ratings."}</span>
           </Alert>
         )}
         {closed && <Alert kind="warning" title="Evaluation Period Closed">The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.</Alert>}
@@ -81,7 +86,7 @@ export default function SelfAssessment() {
                 description={!touched.has(c.id) && !saved ? "Not rated yet" : undefined}
                 value={ratings[c.id] ?? 3}
                 rubric={c.rubric}
-                disabled={closed}
+                disabled={closed || !editing}
                 onChange={(v) => {
                   setRatings({ ...ratings, [c.id]: v });
                   setTouched(new Set(touched).add(c.id));
@@ -90,8 +95,14 @@ export default function SelfAssessment() {
             ))}
           </div>
           {!closed && (
-            <div className="mt-6 flex justify-end">
-              <button className="btn-primary" disabled={busy}>Save</button>
+            <div className="mt-6 flex justify-end gap-2">
+              {saved &&
+                (editing ? (
+                  <button type="button" className="btn-outline" onClick={load}><X className="h-4 w-4" /> Cancel</button>
+                ) : (
+                  <button type="button" className="btn-outline" onClick={() => { setEditing(true); setMsg(null); }}><Pencil className="h-4 w-4" /> Edit</button>
+                ))}
+              <button className="btn-primary" disabled={busy || !editing}>Save</button>
             </div>
           )}
         </form>
