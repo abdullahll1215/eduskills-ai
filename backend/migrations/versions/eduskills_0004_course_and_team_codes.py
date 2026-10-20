@@ -40,6 +40,8 @@ def upgrade() -> None:
     with op.batch_alter_table('teams', schema=schema) as batch:
         batch.add_column(sa.Column('invite_code', sa.String(length=12), nullable=True))
         batch.create_unique_constraint('uq_teams_invite_code', ['invite_code'])
+    if op.get_context().as_sql:
+        return  # offline SQL script: the API gives missing codes at start-up (services.common.ensure_codes)
     meta = sa.MetaData(schema=schema)
     _backfill(sa.Table('projects', meta, sa.Column('id', sa.String(36)), sa.Column('join_code', sa.String(12))), 'join_code')
     _backfill(sa.Table('teams', meta, sa.Column('id', sa.String(36)), sa.Column('invite_code', sa.String(12))), 'invite_code')

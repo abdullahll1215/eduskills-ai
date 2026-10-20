@@ -40,7 +40,7 @@ def upgrade() -> None:
 def _secure_for_backend_role(schema: str | None) -> None:
     """Same protection the Supabase baseline gives every application table: RLS on, browser roles
     locked out, and data access for the restricted backend role only (when that role exists)."""
-    if op.get_bind().dialect.name != "postgresql":
+    if op.get_context().dialect.name != "postgresql":
         return
     table = f'"{schema}".work_project_members' if schema else "work_project_members"
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
