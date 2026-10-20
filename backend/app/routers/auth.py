@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Competency, Enrollment, Notification, Role, User, utcnow
+from ..models import Competency, Notification, Role, User, utcnow
 from ..schemas import LoginIn, PasswordIn, ProfileIn, RegisterIn
 from ..security import create_access_token, hash_password, verify_password
 from ..services import audit
@@ -20,6 +20,11 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(403, "This account has been disabled")
+    is_student = user.role == Role.STUDENT.value
+    if body.portal == "student" and not is_student:
+        raise HTTPException(403, "This is a faculty or staff account. Use the faculty & staff sign-in.")
+    if body.portal == "staff" and is_student:
+        raise HTTPException(403, "This is a student account. Use the student sign-in.")
     user.last_login_at = utcnow()
     audit.log(db, user, "auth.login", "user", user.id)
     db.commit()
@@ -38,7 +43,6 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "An account with this email already exists. Sign in instead.")
-    team = None
     if body.team_id:
         raise HTTPException(403, "Team membership must be assigned by an instructor")
     user = User(
@@ -51,11 +55,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     )
     db.add(user)
     db.flush()
-    if team:
-        db.add(Enrollment(user_id=user.id, project_id=team.project_id, team_id=team.id))
-        if team.project.instructor_id:
-            audit.notify(db, team.project.instructor_id, f"New student joined {team.team_name}", user.full_name, "info", "/instructor/projects")
-    audit.log(db, user, "auth.registered", "user", user.id, f"team={team.team_name if team else '-'}")
+    audit.log(db, user, "auth.registered", "user", user.id)
     db.commit()
     return {"access_token": create_access_token(user.id, user.role), "token_type": "bearer", "user": user_out(user)}
 

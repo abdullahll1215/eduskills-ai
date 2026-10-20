@@ -5,15 +5,17 @@ import type { Milestone, User } from "../../api/types";
 import { Alert, askConfirm, askText, Empty, Loading, Modal, PageHeader, useFetch } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { useT } from "../../i18n";
+import { CopyCode } from "../student/TeamSetup";
 
 interface ProjectFull {
   id: string;
   title: string;
   description: string | null;
   is_active: boolean;
+  join_code: string | null;
   instructor: { id: string; full_name: string } | null;
   milestones: Milestone[];
-  teams: { id: string; team_name: string; members: { id: string; full_name: string; student_number: string }[] }[];
+  teams: { id: string; team_name: string; invite_code: string | null; members: { id: string; full_name: string; student_number: string }[] }[];
   unassigned: { id: string; full_name: string }[];
 }
 
@@ -85,6 +87,12 @@ export default function Projects() {
                 <h2 className="text-lg font-semibold text-slate-900">{project.title}</h2>
                 <p className="text-sm text-slate-500">{project.description}</p>
                 <p className="mt-1 text-xs text-slate-400">{t("Instructor: {name}", { name: project.instructor?.full_name ?? "—" })}</p>
+                {project.join_code && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    {t("Course code")} <CopyCode code={project.join_code} />
+                    <span>{t("Students use it to create a team in this course.")}</span>
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <button className="btn-outline" onClick={() => run(() => api(`/api/projects/${project.id}`, { method: "PUT", body: { title: project.title, description: project.description, is_active: !project.is_active, instructor_id: project.instructor?.id } }), t("Project updated."))}>
@@ -139,7 +147,10 @@ export default function Projects() {
             {project.teams.map((tm) => (
               <div key={tm.id} className="card p-5">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-slate-900">{tm.team_name} <span className="text-xs font-normal text-slate-400">{t("({n} members)", { n: tm.members.length })}</span></h3>
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{tm.team_name} <span className="text-xs font-normal text-slate-400">{t("({n} members)", { n: tm.members.length })}</span></h3>
+                    {tm.invite_code && <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">{t("Invite code")} <span className="font-mono font-semibold tracking-widest text-brand-700" dir="ltr">{tm.invite_code}</span></div>}
+                  </div>
                   <div className="flex gap-1">
                     <button className="btn-ghost p-1.5" title={t("Add member")} onClick={() => setEnrollTeam(tm.id)}><UserPlus className="h-4 w-4" /></button>
                     <button className="btn-ghost p-1.5 text-red-500" title={t("Delete team")} onClick={async () => (await askConfirm(t("Delete {name}?", { name: tm.team_name }))) && run(() => api(`/api/projects/teams/${tm.id}`, { method: "DELETE" }), t("Team deleted."))}><Trash2 className="h-4 w-4" /></button>

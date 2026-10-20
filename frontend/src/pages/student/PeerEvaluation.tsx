@@ -78,7 +78,19 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
           setQ(e.target.value);
           setOpen(true);
         }}
+        onKeyDown={(e) => {
+          // Enter picks the first student that can be evaluated, instead of submitting the form.
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const first = results.find((r) => r.status === "available");
+          if (first) {
+            onPick(first);
+            setOpen(false);
+            setQ("");
+          }
+        }}
       />
+      {q.trim() && !open && <p className="mt-1.5 text-xs text-amber-700">{t("Choose the student from the list.")}</p>}
       {open && (
         <div className="card absolute z-30 mt-1 max-h-80 w-full overflow-y-auto py-1">
           {results.length === 0 && <div className="px-4 py-3 text-sm text-slate-500">{t("No students found.")}</div>}
@@ -117,8 +129,6 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
 interface Check {
   is_toxic: boolean;
   reason: string | null;
-  is_constructive: boolean;
-  hints: string[];
 }
 
 export default function PeerEvaluation() {
@@ -216,26 +226,18 @@ export default function PeerEvaluation() {
               onChange={(e) => setComment(e.target.value)}
               placeholder={t("e.g., Ahmed is great at organizing meetings, but sometimes struggles to accept alternative ideas...")}
             />
-            {check && (
-              <div className="mt-2 space-y-1">
-                {check.is_toxic ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
-                    <ShieldAlert className="h-3.5 w-3.5" /> {t("{reason} — this comment will be held for instructor review", { reason: check.reason ?? "" })}
-                  </span>
-                ) : check.is_constructive ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                    <ShieldCheck className="h-3.5 w-3.5" /> {t("Constructive Feedback Verified")}
-                  </span>
-                ) : (
-                  <ul className="list-inside list-disc text-xs text-amber-700">
-                    {check.hints.map((h) => <li key={h}>{h}</li>)}
-                  </ul>
-                )}
+            {/* Any comment is accepted; only abusive text is flagged for the instructor. */}
+            {check?.is_toxic && (
+              <div className="mt-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                  <ShieldAlert className="h-3.5 w-3.5" /> {t("{reason} — this comment will be held for instructor review", { reason: check.reason ?? "" })}
+                </span>
               </div>
             )}
           </div>
 
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="mt-6 flex items-center justify-end gap-2">
+            {!target && <span className="me-auto text-xs text-slate-400">{t("Select a student to evaluate.")}</span>}
             <button type="button" className="btn-ghost" onClick={reset}>{t("Cancel")}</button>
             <button className="btn-primary" disabled={busy || !target}>{t("Submit Evaluation")}</button>
           </div>

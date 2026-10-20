@@ -19,7 +19,7 @@ export default function LanguageMenu() {
 
   return (
     <div ref={box} className="relative">
-      <button onClick={() => setOpen(!open)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={t("Language")} title={t("Language")}>
+      <button onClick={() => setOpen(!open)} className="rounded-lg p-2 text-slate-500 hover:bg-brand-50 hover:text-brand-700" aria-label={t("Language")} title={t("Language")}>
         <Globe className="h-5 w-5" />
       </button>
       {open && (

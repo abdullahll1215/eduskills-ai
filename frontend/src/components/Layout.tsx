@@ -77,10 +77,11 @@ function Brand({ portal }: { portal: string }) {
   const t = useT();
   return (
     <div className="px-5 py-5">
-      <div className="flex items-center gap-2 text-xl font-bold text-brand-600">
-        <Activity className="h-5 w-5" /> EduSkills AI
+      <div className="flex items-center gap-2.5 text-lg font-bold text-slate-900">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white"><Activity className="h-4 w-4" /></span>
+        <span>EduSkills <span className="text-brand-600">AI</span></span>
       </div>
-      <div className="mt-0.5 text-xs text-slate-500">{t(portal)}</div>
+      <div className="mt-1.5 ps-[42px] text-xs font-medium text-brand-700/70">{t(portal)}</div>
     </div>
   );
 }
@@ -107,7 +108,7 @@ function Notifications() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={t("Notifications")}>
+      <button onClick={() => setOpen(!open)} className="relative rounded-lg p-2 text-slate-500 hover:bg-brand-50 hover:text-brand-700" aria-label={t("Notifications")}>
         <Bell className="h-5 w-5" />
         {unread > 0 && (
           <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
@@ -167,7 +168,7 @@ export default function Layout() {
             to={item.to}
             end={item.end}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20" : "text-slate-600 hover:bg-brand-50 hover:text-brand-700"}`
             }
           >
             {item.icon}
@@ -177,13 +178,13 @@ export default function Layout() {
       </nav>
       <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-4">
         <Link to="/profile" className="flex min-w-0 flex-1 items-center gap-3" title={t("My profile")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">{initials(user.full_name)}</div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">{initials(user.full_name)}</div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-slate-800">{user.full_name}</div>
             <div className="text-xs capitalize text-slate-500">{t(user.role)}</div>
           </div>
         </Link>
-        <button onClick={logout} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title={t("Log out")} aria-label={t("Log out")}>
+        <button onClick={logout} className="rounded-lg p-2 text-slate-400 hover:bg-brand-50 hover:text-brand-700" title={t("Log out")} aria-label={t("Log out")}>
           <LogOut className="h-4 w-4" />
         </button>
       </div>
@@ -191,7 +192,7 @@ export default function Layout() {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-canvas">
       <aside className="fixed inset-y-0 start-0 hidden w-60 border-e border-slate-200 bg-white lg:block">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setMobileOpen(false)}>
@@ -201,7 +202,7 @@ export default function Layout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col lg:ps-60">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur sm:px-8">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 py-2.5 backdrop-blur sm:px-8">
           <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label={t("Open menu")}>
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -209,7 +210,7 @@ export default function Layout() {
           <div className="flex items-center gap-1">
             <LanguageMenu />
             <Notifications />
-            <Link to="/profile" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={t("Profile")}>
+            <Link to="/profile" className="rounded-lg p-2 text-slate-500 hover:bg-brand-50 hover:text-brand-700" aria-label={t("Profile")}>
               <UserIcon className="h-5 w-5" />
             </Link>
           </div>

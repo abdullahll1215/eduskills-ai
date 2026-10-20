@@ -7,13 +7,15 @@ export interface RegisterData {
   email: string;
   password: string;
   student_number?: string;
-  team_id?: string | null;
 }
+
+/** The sign-in page used; the server refuses a student account on the staff page and vice versa. */
+export type Portal = "student" | "staff";
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, portal?: Portal) => Promise<User>;
   register: (data: RegisterData) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -45,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const login = async (email: string, password: string) => {
-    const res = await api<{ access_token: string; user: User }>("/api/auth/login", { body: { email, password } });
+  const login = async (email: string, password: string, portal?: Portal) => {
+    const res = await api<{ access_token: string; user: User }>("/api/auth/login", { body: { email, password, portal } });
     setToken(res.access_token);
     setUser(res.user);
     return res.user;

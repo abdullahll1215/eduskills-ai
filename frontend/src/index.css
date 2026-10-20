@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 @layer components {
-  .card { @apply bg-white rounded-xl border border-slate-200 shadow-sm; }
+  .card { @apply bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_2px_rgba(76,29,149,0.04)]; }
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
-  .btn-outline { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-outline { @apply btn border border-brand-200 bg-white text-brand-700 hover:border-brand-300 hover:bg-brand-50; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-  .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
+  .btn-ghost { @apply btn text-slate-600 hover:bg-brand-50 hover:text-brand-700; }
   .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100; }
   .label { @apply mb-1 block text-sm font-medium text-slate-700; }
   .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
-  .th { @apply px-4 py-3 text-start text-xs font-medium uppercase tracking-wide text-slate-500; }
+  .th { @apply bg-brand-50/50 px-4 py-3 text-start text-xs font-semibold uppercase tracking-wide text-brand-900/60; }
   .td { @apply px-4 py-3 text-sm text-slate-700; }
 }
 
-input[type="range"] { accent-color: #4f46e5; }
+input[type="range"] { accent-color: #7c3aed; }
 
 /* Right-to-left: let each line of mixed content (English names, AI report text) take its own direction. */
 [dir="rtl"] :is(p, li, td, h2, h3, .truncate) {

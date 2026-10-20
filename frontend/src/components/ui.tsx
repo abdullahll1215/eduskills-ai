@@ -48,7 +48,7 @@ export function Loading({ label }: { label?: string }) {
 
 export function Alert({ kind = "info", title, children, onClose }: { kind?: "info" | "error" | "success" | "warning"; title?: string; children?: ReactNode; onClose?: () => void }) {
   const styles = {
-    info: "border-blue-200 bg-blue-50 text-blue-800",
+    info: "border-brand-200 bg-brand-50 text-brand-900",
     error: "border-red-200 bg-red-50 text-red-800",
     success: "border-emerald-200 bg-emerald-50 text-emerald-800",
     warning: "border-amber-200 bg-amber-50 text-amber-800",
@@ -72,7 +72,7 @@ export function Alert({ kind = "info", title, children, onClose }: { kind?: "inf
 
 export function StatCard({ label, value, hint, tone = "default", icon }: { label: string; value: ReactNode; hint?: string; tone?: "default" | "danger" | "warning" | "success"; icon?: ReactNode }) {
   const toneCls = {
-    default: "bg-white border-slate-200",
+    default: "bg-white border-slate-200/80",
     danger: "bg-red-50 border-red-200",
     warning: "bg-amber-50 border-amber-200",
     success: "bg-emerald-50 border-emerald-200",
@@ -86,7 +86,7 @@ export function StatCard({ label, value, hint, tone = "default", icon }: { label
           <div className={`mt-2 text-3xl font-bold ${valueCls}`}>{value}</div>
           {hint && <div className={`mt-1 text-xs ${tone === "danger" ? "text-red-500" : "text-slate-400"}`}>{hint}</div>}
         </div>
-        {icon && <div className="rounded-lg bg-slate-50 p-2.5">{icon}</div>}
+        {icon && <div className="rounded-lg bg-brand-50 p-2.5 text-brand-700">{icon}</div>}
       </div>
     </div>
   );

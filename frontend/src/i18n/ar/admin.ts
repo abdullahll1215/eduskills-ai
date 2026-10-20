@@ -53,7 +53,6 @@ const dict: Record<string, string> = {
   "Backup & Retention": "النسخ الاحتياطي والاحتفاظ بالبيانات",
   "Create database backups and manage data retention. Check verification details before relying on a backup.": "أنشئ نسخ قاعدة البيانات وأدر سياسة الاحتفاظ بها. راجع تفاصيل التحقق قبل الاعتماد على النسخة.",
   "Backup {file} created and verified ({details}).": "تم إنشاء النسخة الاحتياطية {file} والتحقق منها ({details}).",
-  "Backup verification FAILED — emergency alert raised. {details}": "فشل التحقق من النسخة الاحتياطية — تم إطلاق تنبيه طارئ. {details}",
   "Run the data-retention purge? Chat history, notifications and audit logs older than the retention window will be permanently deleted.": "هل تريد تشغيل حذف البيانات وفق سياسة الاحتفاظ؟ سيُحذف نهائيًا سجل المحادثات والإشعارات وسجلات التدقيق الأقدم من فترة الاحتفاظ.",
   "Retention purge complete ({days} days). Deleted — {counts}.": "اكتمل الحذف وفق سياسة الاحتفاظ ({days} يومًا). المحذوف — {counts}.",
   "Database backup": "النسخ الاحتياطي لقاعدة البيانات",
@@ -66,7 +65,6 @@ const dict: Record<string, string> = {
   "File": "الملف",
   "Size": "الحجم",
   "{n} KB": "{n} كيلوبايت",
-  "Verification failed": "فشل التحقق",
   "No backups yet.": "لا توجد نسخ احتياطية بعد.",
 
   // Rubric

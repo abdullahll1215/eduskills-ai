@@ -330,3 +330,47 @@ def test_peer_evaluation_without_comment(client):
     target = next(t for t in client.get("/api/student/evaluation-targets", headers=h).json() if t["status"] == "available")
     r = client.post("/api/student/peer-evaluations", headers=h, json={"target_id": target["id"], "ratings": _ratings(client, h, 4)})
     assert r.status_code == 201 and r.json()["flagged"] is False
+
+
+def _new_student(client, email):
+    body = {"full_name": "Team Tester", "email": email, "password": "Secret123!"}
+    assert client.post("/api/auth/register", json=body).status_code == 201
+    return login_as(client, email, "Secret123!")
+
+
+def test_join_team_with_invite_code(client, instructor):
+    project = client.get("/api/instructor/projects", headers=instructor).json()[0]
+    detail = client.get(f"/api/projects/{project['id']}", headers=instructor).json()
+    team = detail["teams"][0]
+    assert len(detail["join_code"]) == 8 and len(team["invite_code"]) == 8
+    h = _new_student(client, "joiner@student.kfu.edu.sa")
+    assert client.get("/api/student/team", headers=h).json() == []
+    assert client.post("/api/student/team/join", headers=h, json={"code": "WRONG123"}).status_code == 404
+    # Codes are accepted in lower case and with spaces
+    r = client.post("/api/student/team/join", headers=h, json={"code": " " + team["invite_code"].lower()})
+    assert r.status_code == 200 and r.json()["team"]["id"] == team["id"]
+    assert client.post("/api/student/team/join", headers=h, json={"code": team["invite_code"]}).status_code == 409
+    # Now enrolled, the student has an open evaluation period for the self-assessment
+    projects = client.get("/api/student/projects", headers=h).json()
+    assert projects and any(m["status"] == "active" for m in projects[0]["milestones"])
+
+
+def test_create_team_needs_the_course_code(client, instructor):
+    project = client.get("/api/instructor/projects", headers=instructor).json()[0]
+    code = client.get(f"/api/projects/{project['id']}", headers=instructor).json()["join_code"]
+    h = _new_student(client, "founder@student.kfu.edu.sa")
+    assert client.post("/api/student/team/create", headers=h, json={"course_code": "NOPE1234", "team_name": "Gamma"}).status_code == 404
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": code, "team_name": "Team Gamma"})
+    assert r.status_code == 201 and r.json()["team"]["team_name"] == "Team Gamma" and r.json()["team"]["invite_code"]
+    other = _new_student(client, "copycat@student.kfu.edu.sa")
+    dup = client.post("/api/student/team/create", headers=other, json={"course_code": code, "team_name": "team gamma"})
+    assert dup.status_code == 409
+
+
+def test_sign_in_portal_matches_the_role(client):
+    staff = {"email": "ahmed@kfu.edu.sa", "password": "Password123!"}
+    student = {"email": "khalid@student.kfu.edu.sa", "password": "Password123!"}
+    assert client.post("/api/auth/login", json={**staff, "portal": "student"}).status_code == 403
+    assert client.post("/api/auth/login", json={**student, "portal": "staff"}).status_code == 403
+    assert client.post("/api/auth/login", json={**staff, "portal": "staff"}).status_code == 200
+    assert client.post("/api/auth/login", json={**student, "portal": "student"}).status_code == 200

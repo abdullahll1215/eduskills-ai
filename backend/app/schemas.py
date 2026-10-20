@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    # Which sign-in page was used; a student account cannot use the staff page and vice versa.
+    portal: Literal["student", "staff"] | None = None
 
 
 class RegisterIn(BaseModel):
@@ -135,6 +138,15 @@ class MilestoneIn(BaseModel):
 
 class TeamIn(BaseModel):
     team_name: str = Field(min_length=1, max_length=120)
+
+
+class JoinTeamIn(BaseModel):
+    code: str = Field(min_length=4, max_length=20)
+
+
+class CreateTeamIn(BaseModel):
+    course_code: str = Field(min_length=4, max_length=20)
+    team_name: str = Field(min_length=2, max_length=120)
 
 
 class EnrollmentIn(BaseModel):

@@ -31,7 +31,7 @@ function VideoCard({ href, thumb, label, skill, title, subtitle, cta, rtl }: { h
   const [thumbFailed, setThumbFailed] = useState(false);
   return (
     <a href={href} target="_blank" rel="noreferrer" dir={rtl ? "rtl" : undefined} className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 transition hover:border-brand-300 hover:shadow-md sm:flex-row">
-      <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-gradient-to-br from-brand-600 to-indigo-400 sm:w-64">
+      <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-brand-600 sm:w-64">
         {thumb && !thumbFailed ? (
           <img src={thumb} alt="" className="h-full w-full object-cover" onError={() => setThumbFailed(true)} />
         ) : (

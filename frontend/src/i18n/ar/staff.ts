@@ -220,5 +220,9 @@ const dict: Record<string, string> = {
   "Acknowledge": "تأكيد الاطلاع",
   "Mark resolved": "تحديد كمُعالَج",
   "Reopen": "إعادة الفتح",
+  "Course code": "كود المقرر",
+  "Students use it to create a team in this course.": "يستخدمه الطلاب لإنشاء تيم في هذا المقرر.",
+  "Invite code": "كود الدعوة",
+  "Copy": "نسخ",
 };
 export default dict;

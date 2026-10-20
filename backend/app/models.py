@@ -83,6 +83,8 @@ class Project(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     instructor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Shared by the instructor so students can create a team in this course.
+    join_code: Mapped[str | None] = mapped_column(String(12), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     instructor: Mapped[User | None] = relationship()
@@ -118,6 +120,8 @@ class Team(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     team_name: Mapped[str] = mapped_column(String(120))
+    # Shared by a team member so classmates can join the team.
+    invite_code: Mapped[str | None] = mapped_column(String(12), unique=True, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="teams")
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="team")

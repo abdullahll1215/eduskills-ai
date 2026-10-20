@@ -21,15 +21,16 @@ from ..models import (
     Project,
     Role,
     SkillRating,
+    Team,
     User,
     WorkProject,
     WorkProjectMember,
     utcnow,
 )
-from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, MembersIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
+from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, CreateTeamIn, JoinTeamIn, MembersIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
-from ..services.common import competency_out, default_work_project, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
+from ..services.common import competency_out, default_work_project, enrollment_of, new_code, normalise_code, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
 from ..services.report_state import is_current, lock_student_milestone
 
@@ -187,6 +188,74 @@ def submit_self_assessment(
     db.commit()
     run_job(bg, trigger_report, user.id, m.id, existing is not None)  # UC-01 step 7; refresh the report after an edit
     return {"id": ev.id, "created_at": ev.created_at, "message": "Self-assessment saved"}
+
+
+# ------------------------------------------------------- team membership --
+# A student without a team joins one with its invite code, or creates one in a course
+# using the course join code from the instructor. Nobody can pick a course or team from a list.
+
+
+def _team_out(db: Session, enr: Enrollment) -> dict:
+    project = db.get(Project, enr.project_id)
+    team = db.get(Team, enr.team_id) if enr.team_id else None
+    return {
+        "project": {"id": project.id, "title": project.title},
+        "team": {"id": team.id, "team_name": team.team_name, "invite_code": team.invite_code} if team else None,
+        "members": [{"id": u.id, "full_name": u.full_name} for u in teammates(db, enr)] if team else [],
+    }
+
+
+def _place_in_team(db: Session, user: User, team: Team) -> Enrollment:
+    project = team.project
+    if not project.is_active:
+        raise HTTPException(409, "This course is no longer active")
+    enr = enrollment_of(db, user.id, project.id)
+    if enr and enr.team_id:
+        raise HTTPException(409, "You are already in a team in this course")
+    if enr:
+        enr.team_id = team.id
+    else:
+        enr = Enrollment(user_id=user.id, project_id=project.id, team_id=team.id)
+        db.add(enr)
+    if project.instructor_id:
+        audit.notify(db, project.instructor_id, f"{user.full_name} joined {team.team_name}", project.title, "info", "/instructor/projects")
+    return enr
+
+
+@router.get("/team")
+def my_teams(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    return [_team_out(db, e) for e in db.scalars(select(Enrollment).where(Enrollment.user_id == user.id))]
+
+
+@router.post("/team/join")
+def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    team = db.scalar(select(Team).where(Team.invite_code == normalise_code(body.code)))
+    if not team:
+        raise HTTPException(404, "No team has this invite code")
+    enr = _place_in_team(db, user, team)
+    for mate in teammates(db, enr):
+        audit.notify(db, mate.id, f"{user.full_name} joined your team", team.team_name, "info", "/student")
+    audit.log(db, user, "team.joined", "team", team.id, team.team_name)
+    db.commit()
+    return _team_out(db, enr)
+
+
+@router.post("/team/create", status_code=201)
+def create_team(body: CreateTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    project = db.scalar(select(Project).where(Project.join_code == normalise_code(body.course_code)))
+    if not project:
+        raise HTTPException(404, "No course has this code. Ask your instructor for the course code.")
+    name = body.team_name.strip()
+    if db.scalar(select(Team.id).where(Team.project_id == project.id, Team.team_name.ilike(name))):
+        raise HTTPException(409, "A team with this name already exists in this course")
+    team = Team(project_id=project.id, team_name=name, invite_code=new_code(db, Team, Team.invite_code))
+    db.add(team)
+    db.flush()
+    db.refresh(team)
+    enr = _place_in_team(db, user, team)
+    audit.log(db, user, "team.created", "team", team.id, name)
+    db.commit()
+    return _team_out(db, enr)
 
 
 # ------------------------------------------------------------- UC-02 --

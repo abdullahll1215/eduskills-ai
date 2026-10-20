@@ -9,7 +9,7 @@ from ..deps import instructor_only
 from ..models import Enrollment, Milestone, Project, Role, Team, User
 from ..schemas import EnrollmentIn, MilestoneIn, ProjectIn, TeamIn
 from ..services import audit
-from ..services.common import ensure_manage, get_or_404, milestone_out, students_of_project, user_out
+from ..services.common import ensure_manage, get_or_404, milestone_out, new_code, students_of_project, user_out
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -21,12 +21,14 @@ def _project_out(db: Session, p: Project) -> dict:
         "title": p.title,
         "description": p.description,
         "is_active": p.is_active,
+        "join_code": p.join_code,
         "instructor": {"id": p.instructor.id, "full_name": p.instructor.full_name} if p.instructor else None,
         "milestones": [milestone_out(m) for m in p.milestones],
         "teams": [
             {
                 "id": t.id,
                 "team_name": t.team_name,
+                "invite_code": t.invite_code,
                 "members": [{"id": u.id, "full_name": u.full_name, "student_number": u.student_number} for u, e in members if e.team_id == t.id],
             }
             for t in p.teams
@@ -53,7 +55,8 @@ def get_project(project_id: str, user: User = Depends(instructor_only), db: Sess
 @router.post("", status_code=201)
 def create_project(body: ProjectIn, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     instructor_id = body.instructor_id if user.role == Role.ADMIN.value and body.instructor_id else user.id
-    p = Project(title=body.title, description=body.description, instructor_id=instructor_id, is_active=body.is_active)
+    p = Project(title=body.title, description=body.description, instructor_id=instructor_id, is_active=body.is_active,
+                join_code=new_code(db, Project, Project.join_code))
     db.add(p)
     db.flush()
     for i, name in enumerate(["Requirements", "Design", "Implementation"], start=1):
@@ -139,7 +142,7 @@ def delete_milestone(milestone_id: str, user: User = Depends(instructor_only), d
 def add_team(project_id: str, body: TeamIn, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     p = get_or_404(db, Project, project_id, "Project")
     ensure_manage(user, p)
-    t = Team(project_id=p.id, team_name=body.team_name)
+    t = Team(project_id=p.id, team_name=body.team_name, invite_code=new_code(db, Team, Team.invite_code))
     db.add(t)
     db.commit()
     return {"id": t.id, "team_name": t.team_name}

@@ -53,7 +53,23 @@ export function defaultWorkProject(db: DemoDB, studentId: string, projectId: str
   return wp;
 }
 
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** A random 8-character code not used by any of the rows (mirrors the backend's new_code). */
+export function newCode(rows: Row[], key: string): string {
+  for (;;) {
+    const code = Array.from({ length: 8 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
+    if (!rows.some((r) => r[key] === code)) return code;
+  }
+}
+
+function ensureCodes(db: DemoDB) {
+  for (const p of db.projects) p.join_code ??= newCode(db.projects, "join_code");
+  for (const t of db.teams) t.invite_code ??= newCode(db.teams, "invite_code");
+}
+
 function groupOrphanArtifacts(db: DemoDB) {
+  ensureCodes(db);
   db.work_projects ??= [];
   db.work_project_members ??= [];
   for (const a of db.artifacts) {

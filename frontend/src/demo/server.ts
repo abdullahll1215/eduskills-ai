@@ -1,5 +1,5 @@
 // In-browser implementation of the REST API (mirrors backend/app/routers) for the demo build.
-import { defaultWorkProject, getDB, saveDB, type DemoDB, type Ev, type Rep } from "./store";
+import { defaultWorkProject, getDB, newCode, saveDB, type DemoDB, type Ev, type Rep } from "./store";
 import {
   DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, localizedContent, log, nowIso, notify,
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
@@ -75,12 +75,15 @@ route("POST", "/api/auth/login", ({ db, body }) => {
   const u = db.users.find((x) => x.email === String(body.email).toLowerCase());
   if (!u || u.password !== body.password) fail(401, "Invalid email or password");
   if (!u!.is_active) fail(403, "This account has been disabled");
+  const isStudent = u!.role === "student";
+  if (body.portal === "student" && !isStudent) fail(403, "This is a faculty or staff account. Use the faculty & staff sign-in.");
+  if (body.portal === "staff" && isStudent) fail(403, "This is a student account. Use the student sign-in.");
   u!.last_login_at = nowIso();
   log(db, u!.id, "auth.login", "user", u!.id);
   return { access_token: u!.id, token_type: "bearer", user: userOut(u) };
 }, false);
-route("GET", "/api/auth/signup-options", ({ db }) =>
-  db.projects.filter((p) => p.is_active).map((p) => ({ id: p.id, title: p.title, teams: db.teams.filter((t) => t.project_id === p.id).map((t) => ({ id: t.id, team_name: t.team_name })) })), false);
+// Academic memberships are never chosen from a list at sign-up (see /api/student/team).
+route("GET", "/api/auth/signup-options", () => [], false);
 route("POST", "/api/auth/register", ({ db, body }) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   const name = String(body.full_name ?? "").trim();
@@ -88,15 +91,10 @@ route("POST", "/api/auth/register", ({ db, body }) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(422, "Please enter a valid email address");
   if (String(body.password ?? "").length < 8) fail(422, "The password must have at least 8 characters");
   if (db.users.some((u) => u.email === email)) fail(409, "An account with this email already exists. Sign in instead.");
-  const team = body.team_id ? db.teams.find((t) => t.id === body.team_id) ?? fail(400, "The selected team is not available") : null;
+  if (body.team_id) fail(403, "Team membership must be assigned by an instructor");
   const u = { id: uid(), full_name: name, email, role: "student", student_number: String(body.student_number ?? "").trim() || null, level: null, mobile: null, department: null, is_active: true, created_at: nowIso(), last_login_at: nowIso(), password: body.password };
   db.users.push(u);
-  if (team) {
-    db.enrollments.push({ id: uid(), user_id: u.id, project_id: team.project_id, team_id: team.id });
-    const ins = db.projects.find((p) => p.id === team.project_id)?.instructor_id;
-    if (ins) notify(db, ins, `New student joined ${team.team_name}`, name, "info", "/instructor/projects");
-  }
-  log(db, u.id, "auth.registered", "user", u.id, `team=${team?.team_name ?? "-"}`);
+  log(db, u.id, "auth.registered", "user", u.id);
   return { access_token: u.id, token_type: "bearer", user: userOut(u) };
 }, false);
 route("GET", "/api/auth/me", ({ user }) => userOut(user));
@@ -219,6 +217,41 @@ route("GET", "/api/student/evaluation-targets", ({ db, user, q }) => {
       team: e ? teamName(db, e.team_id) : null, project: e ? db.projects.find((p) => p.id === e.project_id)?.title ?? null : null,
       is_teammate: mate, status: evaluationStatus(db, user, u.id, openMilestoneOf(db, u.id, mine[0]?.project_id), c.selfFirst),
     }));
+});
+// ------------------------------------------------------- team membership --
+const normaliseCode = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+function teamOut(db: DemoDB, e: any) {
+  const p = db.projects.find((x) => x.id === e.project_id)!;
+  const t = db.teams.find((x) => x.id === e.team_id);
+  return { project: { id: p.id, title: p.title }, team: t ? { id: t.id, team_name: t.team_name, invite_code: t.invite_code } : null, members: t ? teammates(db, e).map((u: any) => ({ id: u.id, full_name: u.full_name })) : [] };
+}
+function placeInTeam(db: DemoDB, user: any, t: any) {
+  const p = db.projects.find((x) => x.id === t.project_id)!;
+  if (!p.is_active) fail(409, "This course is no longer active");
+  let e = db.enrollments.find((x) => x.user_id === user.id && x.project_id === p.id);
+  if (e?.team_id) fail(409, "You are already in a team in this course");
+  if (e) e.team_id = t.id;
+  else db.enrollments.push((e = { id: uid(), user_id: user.id, project_id: p.id, team_id: t.id }));
+  if (p.instructor_id) notify(db, p.instructor_id, `${user.full_name} joined ${t.team_name}`, p.title, "info", "/instructor/projects");
+  return e;
+}
+route("GET", "/api/student/team", ({ db, user }) => (studentOnly(user), db.enrollments.filter((e) => e.user_id === user.id).map((e) => teamOut(db, e))));
+route("POST", "/api/student/team/join", ({ db, user, body }) => {
+  studentOnly(user);
+  const t = db.teams.find((x) => x.invite_code === normaliseCode(body.code)) ?? fail(404, "No team has this invite code");
+  const e = placeInTeam(db, user, t);
+  teammates(db, e).forEach((m: any) => notify(db, m.id, `${user.full_name} joined your team`, t.team_name, "info", "/student"));
+  return teamOut(db, e);
+});
+route("POST", "/api/student/team/create", ({ db, user, body }) => {
+  studentOnly(user);
+  const p = db.projects.find((x) => x.join_code === normaliseCode(body.course_code)) ?? fail(404, "No course has this code. Ask your instructor for the course code.");
+  const name = String(body.team_name ?? "").trim();
+  if (name.length < 2) fail(422, "Please enter a team name");
+  if (db.teams.some((x) => x.project_id === p.id && x.team_name.toLowerCase() === name.toLowerCase())) fail(409, "A team with this name already exists in this course");
+  const t = { id: uid(), project_id: p.id, team_name: name, invite_code: newCode(db.teams, "invite_code") };
+  db.teams.push(t);
+  return teamOut(db, placeInTeam(db, user, t));
 });
 route("POST", "/api/student/peer-check", ({ body }) => contentFilter(body.comment ?? ""));
 route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
@@ -702,9 +735,9 @@ function projectOut(db: DemoDB, p: any) {
   const members = studentsOf(db, p.id);
   const ins = db.users.find((u) => u.id === p.instructor_id);
   return {
-    id: p.id, title: p.title, description: p.description, is_active: p.is_active, instructor: ins ? { id: ins.id, full_name: ins.full_name } : null,
+    id: p.id, title: p.title, description: p.description, is_active: p.is_active, join_code: p.join_code, instructor: ins ? { id: ins.id, full_name: ins.full_name } : null,
     milestones: msOf(db, p.id).map(msOut),
-    teams: db.teams.filter((t) => t.project_id === p.id).map((t) => ({ id: t.id, team_name: t.team_name, members: members.filter((x) => x.e.team_id === t.id).map((x) => ({ id: x.u.id, full_name: x.u.full_name, student_number: x.u.student_number })) })),
+    teams: db.teams.filter((t) => t.project_id === p.id).map((t) => ({ id: t.id, team_name: t.team_name, invite_code: t.invite_code, members: members.filter((x) => x.e.team_id === t.id).map((x) => ({ id: x.u.id, full_name: x.u.full_name, student_number: x.u.student_number })) })),
     unassigned: members.filter((x) => !x.e.team_id).map((x) => ({ id: x.u.id, full_name: x.u.full_name })),
   };
 }
@@ -717,7 +750,7 @@ route("GET", "/api/projects/directory/students", ({ db, user, q }) => {
 route("GET", "/api/projects/:id", ({ db, user, p }) => projectOut(db, projFor(db, user, p.id)));
 route("POST", "/api/projects", ({ db, user, body }) => {
   instr(user);
-  const p = { id: uid(), title: body.title, description: body.description, instructor_id: user.role === "admin" && body.instructor_id ? body.instructor_id : user.id, is_active: body.is_active ?? true, created_at: nowIso() };
+  const p = { id: uid(), title: body.title, description: body.description, instructor_id: user.role === "admin" && body.instructor_id ? body.instructor_id : user.id, is_active: body.is_active ?? true, join_code: newCode(db.projects, "join_code"), created_at: nowIso() };
   db.projects.push(p);
   ["Requirements", "Design", "Implementation"].forEach((n, i) => db.milestones.push({ id: uid(), project_id: p.id, number: i + 1, name: n, description: null, due_date: null, status: "planned" }));
   log(db, user.id, "project.created", "project", p.id, p.title);
@@ -766,7 +799,7 @@ route("DELETE", "/api/projects/milestones/:id", ({ db, user, p: params }) => {
 });
 route("POST", "/api/projects/:id/teams", ({ db, user, p: params, body }) => {
   const p = projFor(db, user, params.id);
-  const t = { id: uid(), project_id: p.id, team_name: body.team_name };
+  const t = { id: uid(), project_id: p.id, team_name: body.team_name, invite_code: newCode(db.teams, "invite_code") };
   db.teams.push(t);
   return t;
 });

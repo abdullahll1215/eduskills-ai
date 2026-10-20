@@ -1,9 +1,35 @@
 """Shared queries and validation helpers used by several routers."""
+import secrets
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, User, WorkProject
+from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, Team, User, WorkProject
+
+# No 0/O or 1/I, so codes read aloud or typed from a slide are not mistaken.
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def new_code(db: Session, model, column) -> str:
+    """A random 8-character code that is unique in the given column."""
+    while True:
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+        if not db.scalar(select(model.id).where(column == code)):
+            return code
+
+
+def ensure_codes(db: Session) -> None:
+    """Gives every course a join code and every team an invite code."""
+    for p in db.scalars(select(Project).where(Project.join_code.is_(None))).all():
+        p.join_code = new_code(db, Project, Project.join_code)
+    for t in db.scalars(select(Team).where(Team.invite_code.is_(None))).all():
+        t.invite_code = new_code(db, Team, Team.invite_code)
+    db.commit()
+
+
+def normalise_code(code: str) -> str:
+    return "".join(ch for ch in code.upper() if ch.isalnum())
 
 
 def default_work_project(db: Session, student_id: str, project_id: str) -> WorkProject:

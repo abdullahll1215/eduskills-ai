@@ -21,6 +21,7 @@ import type { MilestoneStatus, Report } from "../../api/types";
 import { Alert, Empty, Loading, PageHeader, StatCard, fmt, useFetch } from "../../components/ui";
 import { useT } from "../../i18n";
 import { fill } from "./shared";
+import { TeamStrip } from "./TeamSetup";
 
 interface DashboardData {
   project: { id: string; title: string } | null;
@@ -76,6 +77,7 @@ export default function Dashboard() {
         }
       />
       {exportError && <Alert kind="error" onClose={() => setExportError(null)}>{exportError}</Alert>}
+      <TeamStrip />
 
       {active && !active.self_done && (
         <Alert kind="info" title={t("M{n} evaluation period is open", { n: active.number })}>
@@ -110,7 +112,7 @@ export default function Dashboard() {
                     <PolarGrid stroke="#e2e8f0" />
                     <PolarAngleAxis dataKey="skill" tick={{ fontSize: 11, fill: "#475569" }} />
                     <PolarRadiusAxis domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
-                    <Radar name={t("Self Score")} dataKey="Self" stroke="#4f46e5" fill="#6366f1" fillOpacity={0.25} strokeWidth={2} />
+                    <Radar name={t("Self Score")} dataKey="Self" stroke="#7c3aed" fill="#8b5cf6" fillOpacity={0.25} strokeWidth={2} />
                     <Radar name={t("External Score")} dataKey="External" stroke="#94a3b8" fill="#cbd5e1" fillOpacity={0.45} strokeWidth={2} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                     <Tooltip />
@@ -185,7 +187,7 @@ export default function Dashboard() {
                     <YAxis domain={[0, 5]} tick={{ fontSize: 12 }} />
                     <Tooltip />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="self" name={t("Self")} stroke="#4f46e5" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="self" name={t("Self")} stroke="#7c3aed" strokeWidth={2} dot={{ r: 4 }} />
                     <Line type="monotone" dataKey="external" name={t("External (weighted)")} stroke="#0ea5e9" strokeWidth={2} dot={{ r: 4 }} />
                     <Line type="monotone" dataKey="gap" name={t("Delta Δ")} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 4 }} />
                   </LineChart>

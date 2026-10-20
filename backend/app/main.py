@@ -15,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .database import SessionLocal, engine
 from .migration_runner import upgrade_database, verify_database_revision
-from .services.common import assign_orphan_artifacts
+from .services.common import assign_orphan_artifacts, ensure_codes
 from .services.locale import current_lang, lang_from_header
 from .services.report_state import lock_report_configuration
 from .routers import admin, advisor, auth, instructor, projects, student
@@ -39,6 +39,7 @@ def init_db():
         lock_report_configuration(db, exclusive=True)
         seed.seed_reference(db)
         assign_orphan_artifacts(db)
+        ensure_codes(db)
 
 
 @asynccontextmanager
