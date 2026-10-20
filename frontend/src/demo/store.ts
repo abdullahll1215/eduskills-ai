@@ -53,19 +53,31 @@ export function defaultWorkProject(db: DemoDB, studentId: string, projectId: str
   return wp;
 }
 
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-/** A random 8-character code not used by any of the rows (mirrors the backend's new_code). */
-export function newCode(rows: Row[], key: string): string {
+/** A random unused 6-digit course number (mirrors the backend's new_course_number). */
+export function newCourseNumber(db: DemoDB): string {
   for (;;) {
-    const code = Array.from({ length: 8 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
-    if (!rows.some((r) => r[key] === code)) return code;
+    const number = String(100000 + Math.floor(Math.random() * 900000));
+    if (!db.projects.some((p) => p.join_code === number)) return number;
   }
 }
 
+// Codes match ignoring case, spaces and dashes (mirrors services/common.py).
+export const normaliseCode = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+export const findTeamByCode = (db: DemoDB, code: unknown) => {
+  const wanted = normaliseCode(code);
+  return wanted ? db.teams.find((x) => normaliseCode(x.invite_code) === wanted) : undefined;
+};
+/** Readable invite code: course number + team name, e.g. 1234-ALPHA. */
+export function teamCode(db: DemoDB, courseNumber: string, teamName: string): string {
+  const base = `${courseNumber}-${normaliseCode(teamName).slice(0, 40) || "TEAM"}`;
+  let code = base;
+  for (let n = 2; findTeamByCode(db, code); n++) code = `${base}${n}`;
+  return code;
+}
+
 function ensureCodes(db: DemoDB) {
-  for (const p of db.projects) p.join_code ??= newCode(db.projects, "join_code");
-  for (const t of db.teams) t.invite_code ??= newCode(db.teams, "invite_code");
+  for (const p of db.projects) p.join_code ??= newCourseNumber(db);
+  for (const t of db.teams) t.invite_code ??= teamCode(db, db.projects.find((p) => p.id === t.project_id)?.join_code ?? "TEAM", t.team_name);
 }
 
 function groupOrphanArtifacts(db: DemoDB) {

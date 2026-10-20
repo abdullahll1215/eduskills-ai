@@ -96,7 +96,7 @@ function AssessmentForm({ personal, milestone, reloadProjects }: { personal: boo
         )}
         {closed && <Alert kind="warning" title={t("Evaluation Period Closed")}>{t("The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.")}</Alert>}
 
-        <form onSubmit={submit} className="card p-6">
+        <form onSubmit={submit} className="card assessment-sheet p-5 sm:p-7">
           <h2 className="font-semibold text-slate-900">{t("5-Skill Rubric")}</h2>
           <p className="text-sm text-slate-500">{t("Move each slider; the descriptor below explains what each level means.")}</p>
           <div className="mt-2 divide-y divide-slate-100">
@@ -116,7 +116,7 @@ function AssessmentForm({ personal, milestone, reloadProjects }: { personal: boo
             ))}
           </div>
           {!closed && (
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="assessment-actions mt-6 flex justify-end gap-2">
               {saved &&
                 (editing ? (
                   <button type="button" className="btn-outline" onClick={load}><X className="h-4 w-4" /> {t("Cancel")}</button>

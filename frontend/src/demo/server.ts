@@ -1,5 +1,5 @@
 // In-browser implementation of the REST API (mirrors backend/app/routers) for the demo build.
-import { defaultWorkProject, getDB, newCode, saveDB, type DemoDB, type Ev, type Rep } from "./store";
+import { defaultWorkProject, findTeamByCode, getDB, newCourseNumber, normaliseCode, saveDB, teamCode, type DemoDB, type Ev, type Rep } from "./store";
 import {
   DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, localizedContent, log, nowIso, notify,
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
@@ -241,23 +241,17 @@ route("GET", "/api/student/evaluation-targets", ({ db, user, q }) => {
     }));
 });
 // ------------------------------------------------------- team membership --
-// Codes match ignoring case, spaces and dashes (mirrors services/common.py).
-const normaliseCode = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
-const findTeamByCode = (db: DemoDB, code: unknown) => {
-  const wanted = normaliseCode(code);
-  return wanted ? db.teams.find((x) => normaliseCode(x.invite_code) === wanted) : undefined;
-};
+/** Validates an instructor-chosen course number and checks no other course uses it. */
+function courseNumberFree(db: DemoDB, number: unknown, exceptId?: string): string | undefined {
+  if (!number) return undefined;
+  if (!/^\d{4,10}$/.test(String(number))) fail(422, "The course number must be 4 to 10 digits");
+  if (db.projects.some((x) => x.id !== exceptId && x.join_code === number)) fail(409, "Another course already uses this course number");
+  return String(number);
+}
 function courseNumberOf(raw: unknown): string {
   const number = String(raw ?? "").replace(/\D/g, "");
   if (number.length < 4 || number.length > 10 || number.length !== normaliseCode(raw).length) fail(422, "The course number must be 4 to 10 digits");
   return number;
-}
-/** Readable invite code: course number + team name, e.g. 1234-ALPHA. */
-function teamCode(db: DemoDB, courseNumber: string, teamName: string): string {
-  const base = `${courseNumber}-${normaliseCode(teamName).slice(0, 40) || "TEAM"}`;
-  let code = base;
-  for (let n = 2; findTeamByCode(db, code); n++) code = `${base}${n}`;
-  return code;
 }
 function teamOut(db: DemoDB, e: any) {
   const p = db.projects.find((x) => x.id === e.project_id)!;
@@ -802,7 +796,7 @@ route("GET", "/api/projects/directory/students", ({ db, user, q }) => {
 route("GET", "/api/projects/:id", ({ db, user, p }) => projectOut(db, projFor(db, user, p.id)));
 route("POST", "/api/projects", ({ db, user, body }) => {
   instr(user);
-  const p = { id: uid(), title: body.title, description: body.description, instructor_id: user.role === "admin" && body.instructor_id ? body.instructor_id : user.id, is_active: body.is_active ?? true, join_code: newCode(db.projects, "join_code"), created_at: nowIso() };
+  const p = { id: uid(), title: body.title, description: body.description, instructor_id: user.role === "admin" && body.instructor_id ? body.instructor_id : user.id, is_active: body.is_active ?? true, join_code: courseNumberFree(db, body.course_number) ?? newCourseNumber(db), created_at: nowIso() };
   db.projects.push(p);
   ["Requirements", "Design", "Implementation"].forEach((n, i) => db.milestones.push({ id: uid(), project_id: p.id, number: i + 1, name: n, description: null, due_date: null, status: "planned" }));
   log(db, user.id, "project.created", "project", p.id, p.title);
@@ -812,9 +806,7 @@ route("PUT", "/api/projects/:id", ({ db, user, p: params, body }) => {
   const p = projFor(db, user, params.id);
   Object.assign(p, { title: body.title, description: body.description, is_active: body.is_active });
   if (body.course_number && body.course_number !== p.join_code) {
-    if (!/^\d{4,10}$/.test(body.course_number)) fail(422, "The course number must be 4 to 10 digits");
-    if (db.projects.some((x) => x.id !== p.id && x.join_code === body.course_number)) fail(409, "Another course already uses this course number");
-    p.join_code = body.course_number;
+    p.join_code = courseNumberFree(db, body.course_number, p.id)!;
   }
   if (user.role === "admin" && body.instructor_id) p.instructor_id = body.instructor_id;
   return projectOut(db, p);

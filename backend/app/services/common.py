@@ -7,24 +7,22 @@ from sqlalchemy.orm import Session
 
 from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, Team, User, WorkProject
 
-# No 0/O or 1/I, so codes read aloud or typed from a slide are not mistaken.
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-
-def new_code(db: Session, model, column) -> str:
-    """A random 8-character code that is unique in the given column."""
+def new_course_number(db: Session) -> str:
+    """A random 6-digit course number for a course created without one (the instructor can change it)."""
     while True:
-        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
-        if not db.scalar(select(model.id).where(column == code)):
-            return code
+        number = f"{secrets.randbelow(900000) + 100000}"
+        if not db.scalar(select(Project.id).where(Project.join_code == number)):
+            return number
 
 
 def ensure_codes(db: Session) -> None:
-    """Gives every course a join code and every team an invite code."""
+    """Gives every course a course number and every team a readable invite code (existing codes are kept)."""
     for p in db.scalars(select(Project).where(Project.join_code.is_(None))).all():
-        p.join_code = new_code(db, Project, Project.join_code)
+        p.join_code = new_course_number(db)
+        db.flush()
     for t in db.scalars(select(Team).where(Team.invite_code.is_(None))).all():
-        t.invite_code = new_code(db, Team, Team.invite_code)
+        t.invite_code = team_code(db, db.get(Project, t.project_id).join_code, t.team_name)
+        db.flush()
     db.commit()
 
 

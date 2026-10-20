@@ -9,7 +9,7 @@ from ..deps import instructor_only
 from ..models import Enrollment, Milestone, Project, Role, Team, User
 from ..schemas import EnrollmentIn, MilestoneIn, ProjectIn, TeamIn
 from ..services import audit
-from ..services.common import ensure_manage, get_or_404, milestone_out, new_code, students_of_project, team_code, user_out
+from ..services.common import ensure_manage, get_or_404, milestone_out, new_course_number, students_of_project, team_code, user_out
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -64,7 +64,7 @@ def create_project(body: ProjectIn, user: User = Depends(instructor_only), db: S
     if body.course_number:
         _ensure_course_number_free(db, body.course_number)
     p = Project(title=body.title, description=body.description, instructor_id=instructor_id, is_active=body.is_active,
-                join_code=body.course_number or new_code(db, Project, Project.join_code))
+                join_code=body.course_number or new_course_number(db))
     db.add(p)
     db.flush()
     for i, name in enumerate(["Requirements", "Design", "Implementation"], start=1):
@@ -156,7 +156,7 @@ def add_team(project_id: str, body: TeamIn, user: User = Depends(instructor_only
     t = Team(project_id=p.id, team_name=body.team_name, invite_code=team_code(db, p.join_code or "TEAM", body.team_name))
     db.add(t)
     db.commit()
-    return {"id": t.id, "team_name": t.team_name}
+    return {"id": t.id, "team_name": t.team_name, "invite_code": t.invite_code}
 
 
 @router.put("/teams/{team_id}")

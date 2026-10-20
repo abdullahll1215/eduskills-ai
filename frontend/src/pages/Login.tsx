@@ -1,9 +1,11 @@
-import { Activity, ArrowLeft, BrainCircuit, BriefcaseBusiness, ChevronRight, Eye, GraduationCap, LineChart, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, ChevronRight, GraduationCap, Loader2, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DEMO as IS_DEMO } from "../api/client";
 import { Alert, askConfirm } from "../components/ui";
 import LanguageMenu from "../components/LanguageMenu";
+import Brand from "../components/Brand";
+import Perspectives from "../components/Perspectives";
 import { homeFor, Portal, useAuth } from "../context/AuthContext";
 import { useT } from "../i18n";
 
@@ -36,9 +38,9 @@ function PortalChooser({ onPick }: { onPick: (step: Step) => void }) {
     <button
       type="button"
       onClick={() => onPick(portal)}
-      className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 text-start transition hover:border-brand-400 hover:shadow-sm"
+      className="portal-option group"
     >
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700 transition group-hover:bg-brand-600 group-hover:text-white">{icon}</div>
+      <div className="portal-icon">{icon}</div>
       <div className="min-w-0 flex-1">
         <div className="font-semibold text-slate-900">{t(title)}</div>
         <div className="text-sm text-slate-500">{t(text)}</div>
@@ -224,54 +226,30 @@ function SignupForm({ onDone, onCancel }: { onDone: (role: string) => void; onCa
   );
 }
 
-const FEATURES: [typeof Eye, string, string][] = [
-  [Eye, "Blind-spot detection", "Weighted Johari-window gap analysis (60% instructor, 40% peers)."],
-  [BrainCircuit, "AI developmental narratives", "Generative AI turns feedback into actionable growth reports."],
-  [LineChart, "Longitudinal growth", "Track five core soft skills across project milestones."],
-  [ShieldCheck, "Anonymous & secure", "Salted SHA-256 anonymization and encrypted feedback."],
-];
-
 export default function Login() {
   const t = useT();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("choose");
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-brand-700 p-12 text-white lg:flex">
-        <div className="flex items-center gap-2 text-2xl font-bold">
-          <Activity className="h-6 w-6" /> EduSkills AI
+    <div className="login-shell">
+      <section className="login-story" aria-label={t("About EduSkills")}>
+        <Brand caption={t("Assessment & development")} />
+        <div className="login-story-content">
+          <div className="login-index">{t("Three perspectives. A clearer picture.")}</div>
+          <h1>{t("Your skills,")}<br />{t("in perspective.")}</h1>
+          <p className="login-story-intro">{t("Self-reflection, teammate feedback and instructor insight — connected in one place.")}</p>
+          <Perspectives />
         </div>
-        <div>
-          <h1 className="text-4xl font-bold leading-tight">{t("AI-Driven Soft Skills Assessment & Development")}</h1>
-          <p className="mt-4 max-w-md text-brand-100">
-            {t("360° feedback from yourself, your peers and your instructor — turned into blind-spot insights and a personal growth plan.")}
-          </p>
-          <div className="mt-10 grid max-w-md gap-5">
-            {FEATURES.map(([Icon, title, text]) => (
-              <div key={title} className="flex gap-3">
-                <div className="h-fit rounded-lg bg-white/10 p-2 ring-1 ring-white/15">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="font-semibold">{t(title)}</div>
-                  <div className="text-sm text-brand-100">{t(text)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="text-xs text-brand-200">{t("King Faisal University · College of Computer Sciences & Information Technology")}</div>
-      </div>
+        <div className="login-story-footer">{t("King Faisal University · College of Computer Sciences & Information Technology")}</div>
+      </section>
 
-      <div className="relative flex items-center justify-center bg-white p-6">
-        <div className="absolute end-4 top-4"><LanguageMenu /></div>
-        <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <div className="flex items-center gap-2 text-2xl font-bold text-brand-600">
-              <Activity className="h-6 w-6" /> EduSkills AI
-            </div>
-          </div>
+      <div className="login-form-side">
+        <div className="absolute end-5 top-5"><LanguageMenu /></div>
+        <div className="login-form">
+          <div className="mb-10 lg:hidden"><Brand caption={t("Assessment & development")} /></div>
+          <div className="section-kicker mb-4">{t("Access your workspace")}</div>
+          <div key={step} className="login-form-enter">
           {step === "choose" && <PortalChooser onPick={setStep} />}
           {(step === "student" || step === "staff") && (
             <>
@@ -285,6 +263,8 @@ export default function Login() {
               <SignupForm onDone={(role) => navigate(homeFor(role))} onCancel={() => setStep("student")} />
             </>
           )}
+          </div>
+          <div className="login-form-note flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0" />{t("Peer feedback is anonymous. Your personal assessment stays private.")}</div>
         </div>
       </div>
     </div>

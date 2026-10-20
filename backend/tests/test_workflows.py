@@ -346,7 +346,7 @@ def test_join_team_with_invite_code(client, instructor):
     project = client.get("/api/instructor/projects", headers=instructor).json()[0]
     detail = client.get(f"/api/projects/{project['id']}", headers=instructor).json()
     team = detail["teams"][0]
-    assert len(detail["join_code"]) == 8 and len(team["invite_code"]) == 8
+    assert detail["join_code"].isdigit() and team["invite_code"].startswith(detail["join_code"] + "-")
     h = _new_student(client, "joiner@student.kfu.edu.sa")
     assert client.get("/api/student/team", headers=h).json() == []
     assert client.post("/api/student/team/join", headers=h, json={"code": "WRONG123"}).status_code == 404
@@ -403,3 +403,18 @@ def test_team_code_is_course_number_and_team_name(client, instructor):
     body = {"title": "Graduation Project - IS 2026", "description": "x", "is_active": True, "course_number": "7531"}
     assert client.put(f"/api/projects/{pid}", headers=instructor, json=body).status_code == 409  # taken
     assert client.put(f"/api/projects/{pid}", headers=instructor, json={**body, "course_number": "4242"}).json()["join_code"] == "4242"
+
+
+def test_generated_codes_are_course_numbers(client, instructor):
+    """Courses and teams without a code get a numeric course number and a readable team code."""
+    r = client.post("/api/projects", headers=instructor, json={"title": "Untitled course", "description": "x", "is_active": True})
+    assert r.status_code in (200, 201)
+    number = r.json()["join_code"]
+    assert number.isdigit() and len(number) == 6
+    pid = r.json()["id"]
+    team = client.post(f"/api/projects/{pid}/teams", headers=instructor, json={"team_name": "Team Vega"}).json()
+    assert team["invite_code"] == f"{number}-TEAMVEGA"
+    seeded = client.get("/api/instructor/projects", headers=instructor).json()
+    for course in seeded:
+        for t in course.get("teams", []):
+            assert t["invite_code"].startswith(f"{course['join_code']}-") or not course["join_code"].isdigit()
