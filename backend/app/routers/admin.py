@@ -22,7 +22,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..schemas import CompetencyIn, ResourceIn, SettingsIn, ShowcaseIn, UserIn
+from ..schemas import CompetencyIn, ResourceIn, SettingsIn, ShowcaseIn, ShowcaseOwnerIn, UserIn
 from ..security import hash_password
 from ..services import ai_engine, audit, backup
 from ..services.common import assign_orphan_artifacts, competency_out, ensure_codes, get_or_404, user_out
@@ -282,9 +282,30 @@ def create_backup(admin: User = Depends(admin_only), db: Session = Depends(get_d
     return {"id": rec.id, "filename": rec.filename, "verified": rec.verified, "details": rec.details, "size_bytes": rec.size_bytes}
 
 
+def _instructor(db: Session, user_id: str) -> User:
+    u = db.get(User, user_id)
+    if not u or u.role != Role.INSTRUCTOR.value:
+        raise HTTPException(422, "Choose an instructor account")
+    return u
+
+
 @router.get("/showcase")
 def showcase_status(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return {"exists": seed.showcase_exists(db), "domain": seed.SHOWCASE_DOMAIN}
+    project = seed.showcase_project(db)
+    return {"exists": seed.showcase_exists(db), "domain": seed.SHOWCASE_DOMAIN,
+            "instructor": user_out(project.instructor) if project and project.instructor else None}
+
+
+@router.put("/showcase/instructor")
+def showcase_owner(body: ShowcaseOwnerIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Gives the showcase course, with all its data, to another instructor account."""
+    project = seed.showcase_project(db)
+    if not project:
+        raise HTTPException(404, "Add the showcase data first")
+    project.instructor_id = _instructor(db, body.instructor_id).id
+    audit.log(db, admin, "showcase.instructor_changed", "project", project.id, body.instructor_id)
+    db.commit()
+    return {"instructor": user_out(project.instructor)}
 
 
 @router.post("/showcase", status_code=201)
@@ -293,7 +314,11 @@ def create_showcase(body: ShowcaseIn, admin: User = Depends(admin_only), db: Ses
     The password is shown once; it can be changed later from Users."""
     if seed.showcase_exists(db):
         raise HTTPException(409, "Showcase data already exists. Change its passwords from Users.")
+    owner = _instructor(db, body.instructor_id) if body.instructor_id else None
     result = seed.seed_showcase(db, body.password or f"Demo-{secrets.token_hex(4)}")
+    if owner:
+        db.get(Project, result["project_id"]).instructor_id = owner.id
+        result["instructor"] = user_out(owner)
     audit.log(db, admin, "showcase.created", "project", result["project_id"], f"accounts @{seed.SHOWCASE_DOMAIN}")
     assign_orphan_artifacts(db)
     ensure_codes(db)  # commits

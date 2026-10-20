@@ -162,6 +162,15 @@ const dict: Record<string, string> = {
   "Copy the password now. It is not shown again.": "انسخ كلمة المرور الحين، ما راح تظهر مرة ثانية.",
   "Academic advisor": "المرشد الأكاديمي",
   "Other student accounts (same password): {emails}": "حسابات الطلاب الثانية (بنفس كلمة المرور): {emails}",
+  "Course instructor": "معلم المقرر",
+  "Choose an instructor": "اختر معلم",
+  "Demo instructor (ahmed@{domain})": "المعلم التجريبي (ahmed@{domain})",
+  "Give the course to this instructor": "انقل المقرر لهذا المعلم",
+  "The showcase course now belongs to {name}.": "مقرر العرض صار تابع لـ {name}.",
+  "Current instructor: {name} ({email}).": "المعلم الحالي: {name} ({email}).",
+  "The showcase course belongs to {name}, who signs in with their own password.": "مقرر العرض تابع لـ {name}، ويدخل بكلمة مروره الخاصة.",
+  "Choose an instructor account": "اختر حساب معلم",
+  "Add the showcase data first": "أضف بيانات العرض أول",
   "Showcase data already exists. Change its passwords from Users.": "بيانات العرض موجودة من قبل. تقدر تغيّر كلمات المرور من صفحة المستخدمين.",
 };
 export default dict;

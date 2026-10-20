@@ -325,6 +325,12 @@ def showcase_exists(db: Session) -> bool:
     return bool(db.scalar(select(User.id).where(User.email == f"ahmed@{SHOWCASE_DOMAIN}")))
 
 
+def showcase_project(db: Session) -> Project | None:
+    """The showcase course, found through its main student (its title and instructor can change)."""
+    return db.scalar(select(Project).join(Enrollment, Enrollment.project_id == Project.id).join(User, User.id == Enrollment.user_id)
+                     .where(User.email == f"khalid@{SHOWCASE_DOMAIN}"))
+
+
 def seed_showcase(db: Session, password: str) -> dict:
     """Adds the demo cohort to a live system so every feature can be shown; returns the sign-in details."""
     project = seed_demo(db, password=password, showcase=True)
