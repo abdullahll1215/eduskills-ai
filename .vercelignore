@@ -7,3 +7,11 @@ frontend/demo
 docs
 screenshots
 *.zip
+.git
+.env*
+backend/.env*
+backend/.venv*
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+supabase/.temp

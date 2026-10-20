@@ -33,11 +33,19 @@ One upstream test-client deprecation warning remains (`Starlette` / `httpx`); it
 
 An independent code review identified five additional defects: cross-course feedback disclosure, global-setting/report race, stale cohort team summary, concurrent reference-data initialization, and Unicode numeric validation. Each was fixed and regression-covered before the final runs above.
 
-## Hosted integration still pending
+## Verified against Supabase
 
-The intended Supabase project is `kfu-soft-skills-ms3` (`hjipoywmuczrfdcvbwmn`). Earlier inspection found 19 legacy tables in `public` and no `eduskills` schema. The proposed migration keeps those legacy tables and creates the current FastAPI application's separate private schema.
+The confirmed Supabase project is `kfu-soft-skills-ms3` (`hjipoywmuczrfdcvbwmn`). Before provisioning it had 19 legacy tables in `public` and no `eduskills` schema. The reviewed baseline was applied transactionally using authenticated Supabase CLI 2.121.0, then recorded in `supabase_migrations.schema_migrations` as `20261020144415`.
 
-At the latest connection check, OAuth exposed only `knf7's Project` in another organization; fetching the intended project returned a permission error. **No new schema migration or role credentials have been applied to either remote project.** The migration is prepared and tested locally, but remote schema verification, Supabase advisors, runtime credentials, deployed environment settings and a hosted acceptance journey remain pending correct-organization access.
+Post-application SQL confirmed 20 application tables, RLS on all 20, revision `eduskills_0002`, browser-role schema access denied and the original 19 public tables retained. A separate restricted `eduskills_app` login was provisioned. Its owner-only local environment file is Git-ignored; no credentials are committed. Production-mode FastAPI initialization connected with this role, created 5 reference competencies and 12 learning resources, and created **zero users**. A runtime write probe succeeded and was rolled back. The production-mode API's `/api/health` returned `200` and `{"status":"ok","app":"EduSkills AI"}` while connected to this remote database.
+
+Supabase advisors reported zero notices for `eduskills`. Three warnings remain for the existing `public.kfu_assessment`, `public.kfu_context` and `public.kfu_results` RPC functions because authenticated users can execute `SECURITY DEFINER` functions. Their definitions explicitly enforce actor/project/result access through private helpers and use an empty search path; privileges were preserved to avoid breaking the older application. This inspection is not a full security certification of those legacy functions. [Advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+
+The connector's OAuth grant still targets another organization, but the separately authorized official CLI reached and verified the correct project. No other Supabase project was modified.
+
+## Delivery boundaries
+
+Deployment environment settings and a hosted acceptance journey remain pending. The locally running production-mode API connected to Supabase is evidence of backend/database integration, not proof that the existing Vercel deployment uses the new branch or database. Existing application users/data have not been imported into the new schema. Encryption keys must be preserved when planning any such import.
 
 The GitHub Actions workflow is supplied; local passing checks do not establish a remote CI result. A durable hosted backup destination also remains an operational deployment requirement.
 

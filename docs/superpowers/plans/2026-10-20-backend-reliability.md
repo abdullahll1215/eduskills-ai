@@ -20,19 +20,19 @@
 ### Task 1: Report integrity
 - [x] Add isolated database fixtures and failing tests for fourth peer, deleted inputs and stale exports.
 - [x] Fingerprint report inputs and guard readers; refresh changed sources and serialize PostgreSQL writes.
-- [ ] Run targeted tests and full suite; commit evidence.
+- [x] Run targeted tests and full suite; commit evidence.
 
 ### Task 2: Privacy and validation
 - [x] Add failing tests for no-membership access, self-assigned team, invalid settings and hidden-strength alerts.
 - [x] Enforce staff membership, shared-team opt-in feedback, shared-course peer access, finite settings and directional interventions.
-- [ ] Adapt affected UI/test expectations explicitly; run full suite and frontend build.
+- [x] Adapt affected UI/test expectations explicitly; run full suite and frontend build.
 
 ### Task 3: Database lifecycle
 - [x] Add failing configuration/readiness tests and versioned Alembic baseline.
 - [x] Fail closed in production, remove runtime schema patching and silent init errors, support private schema and least-privilege connections.
-- [ ] Apply and verify fresh/replayed migrations, legacy-schema preservation and a connected PostgreSQL API flow.
+- [x] Apply and verify fresh/replayed migrations, legacy-schema preservation and a connected PostgreSQL API flow.
 
 ### Task 4: Recovery and delivery
 - [x] Correct backup verification claims and test the restore path.
-- [ ] Run regressions and independent review; address material findings with tests.
+- [x] Run regressions and independent review; address material findings with tests.
 - [ ] Commit/push a reviewable branch and draft PR; report precise deployment status and remaining external blockers.
