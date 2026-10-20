@@ -25,6 +25,7 @@ import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useT } from "../i18n";
 import LanguageMenu from "./LanguageMenu";
+import BrandLogo from "./Brand";
 import ErrorBoundary from "./ErrorBoundary";
 import { fmtDate, initials } from "./ui";
 
@@ -76,15 +77,7 @@ const NAV: Record<string, { portal: string; items: NavItem[] }> = {
 
 function Brand({ portal }: { portal: string }) {
   const t = useT();
-  return (
-    <div className="px-5 py-5">
-      <div className="flex items-center gap-2.5 text-lg font-bold text-slate-900">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white"><Activity className="h-4 w-4" /></span>
-        <span>EduSkills <span className="text-brand-600">AI</span></span>
-      </div>
-      <div className="mt-1.5 ps-[42px] text-xs font-medium text-brand-700/70">{t(portal)}</div>
-    </div>
-  );
+  return <div className="sidebar-brand"><BrandLogo caption={t(portal)} /></div>;
 }
 
 function Notifications() {
@@ -156,20 +149,40 @@ export default function Layout() {
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const drawer = document.getElementById("mobile-navigation");
+    const close = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+      if (e.key === "Tab" && drawer) {
+        const focusable = [...drawer.querySelectorAll<HTMLElement>("a, button")];
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    };
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    drawer?.querySelector<HTMLElement>("button")?.focus();
+    document.addEventListener("keydown", close);
+    return () => { document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", close); previous?.focus(); };
+  }, [mobileOpen]);
   if (!user) return null;
   const nav = NAV[user.role];
 
   const sidebar = (
     <div className="flex h-full flex-col">
       <Brand portal={nav.portal} />
-      <nav className="flex-1 space-y-1 overflow-y-auto border-t border-slate-100 px-3 py-4">
+      <div className="sidebar-section">{t("Workspace")}</div>
+      <nav className="sidebar-nav" aria-label={t("Main navigation")}>
         {nav.items.map((item) => (
           <NavLink
             key={item.to + item.label}
             to={item.to}
             end={item.end}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20" : "text-slate-600 hover:bg-brand-50 hover:text-brand-700"}`
+              `sidebar-link ${isActive ? "is-active" : ""}`
             }
           >
             {item.icon}
@@ -177,12 +190,12 @@ export default function Layout() {
           </NavLink>
         ))}
       </nav>
-      <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-4">
+      <div className="sidebar-profile">
         <Link to="/profile" className="flex min-w-0 flex-1 items-center gap-3" title={t("My profile")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">{initials(user.full_name)}</div>
+          <div className="sidebar-avatar">{initials(user.full_name)}</div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-800">{user.full_name}</div>
-            <div className="text-xs capitalize text-slate-500">{t(user.role)}</div>
+            <div className="profile-name truncate text-xs font-medium">{user.full_name}</div>
+            <div className="profile-role mt-1 text-[11px] capitalize">{t(user.role)}</div>
           </div>
         </Link>
         <button onClick={logout} className="rounded-lg p-2 text-slate-400 hover:bg-brand-50 hover:text-brand-700" title={t("Log out")} aria-label={t("Log out")}>
@@ -194,20 +207,23 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-canvas">
-      <aside className="fixed inset-y-0 start-0 hidden w-60 border-e border-slate-200 bg-white lg:block">{sidebar}</aside>
+      <a className="skip-link" href="#workspace-content">{t("Skip to content")}</a>
+      <aside className="workspace-sidebar fixed inset-y-0 start-0 z-40 hidden w-60 lg:block">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setMobileOpen(false)}>
-          <aside className="h-full w-64 bg-white" onClick={(e) => e.stopPropagation()}>
+          <aside id="mobile-navigation" className="workspace-sidebar relative h-full w-72" role="dialog" aria-modal="true" aria-label={t("Main navigation")} onClick={(e) => e.stopPropagation()}>
+            <button className="absolute end-2 top-2 rounded-lg p-3 text-white lg:hidden" onClick={() => setMobileOpen(false)} aria-label={t("Close menu")}><X className="h-5 w-5" /></button>
             {sidebar}
           </aside>
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col lg:ps-60">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 py-2.5 backdrop-blur sm:px-8">
-          <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label={t("Open menu")}>
+        <header className="workspace-header sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 px-4 sm:px-9">
+          <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setMobileOpen(true)} aria-label={t("Open menu")} aria-expanded={mobileOpen} aria-controls="mobile-navigation">
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <div className="hidden text-sm text-slate-400 lg:block">{t("AI-Driven Soft Skills Assessment & Development System")}</div>
+          <span className="text-sm font-semibold tracking-tight text-slate-800 lg:hidden" dir="ltr">EduSkills<span className="ms-1 text-[10px] text-slate-500">AI</span></span>
+          <div className="workspace-breadcrumb hidden lg:flex"><span>{t(nav.portal)}</span><span aria-hidden="true">/</span><strong>{t(nav.items.find((item) => location.pathname === item.to || (!item.end && location.pathname.startsWith(item.to + "/")))?.label ?? "My profile")}</strong></div>
           <div className="flex items-center gap-1">
             <LanguageMenu />
             <Notifications />
@@ -216,7 +232,7 @@ export default function Layout() {
             </Link>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main id="workspace-content" className="workspace-main mx-auto w-full max-w-6xl flex-1 px-5 py-7 sm:px-9 sm:py-9" tabIndex={-1}>
           <ErrorBoundary key={location.pathname}>
             <Outlet />
           </ErrorBoundary>

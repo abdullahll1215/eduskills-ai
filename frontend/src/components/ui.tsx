@@ -28,10 +28,10 @@ export function useFetch<T>(fn: () => Promise<T>, deps: unknown[] = []) {
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="page-header">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="page-title">{title}</h1>
+        {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
     </div>
@@ -79,11 +79,11 @@ export function StatCard({ label, value, hint, tone = "default", icon }: { label
   }[tone];
   const valueCls = { default: "text-slate-900", danger: "text-red-600", warning: "text-amber-600", success: "text-emerald-600" }[tone];
   return (
-    <div className={`rounded-xl border p-5 shadow-sm ${toneCls}`}>
+    <div className={`stat-card ${toneCls}`}>
       <div className="flex items-start justify-between">
         <div>
           <div className={`text-sm ${tone === "danger" ? "text-red-600" : "text-slate-500"}`}>{label}</div>
-          <div className={`mt-2 text-3xl font-bold ${valueCls}`}>{value}</div>
+          <div className={`stat-value ${valueCls}`}>{value}</div>
           {hint && <div className={`mt-1 text-xs ${tone === "danger" ? "text-red-500" : "text-slate-400"}`}>{hint}</div>}
         </div>
         {icon && <div className="rounded-lg bg-brand-50 p-2.5 text-brand-700">{icon}</div>}
@@ -121,7 +121,7 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function Empty({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="card flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
+    <div className="empty-state">
       {icon}
       <div className="text-base font-semibold text-slate-800">{title}</div>
       {children && <div className="max-w-md text-sm text-slate-500">{children}</div>}
