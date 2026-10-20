@@ -55,7 +55,15 @@ export function defaultWorkProject(db: DemoDB, studentId: string, projectId: str
 
 function groupOrphanArtifacts(db: DemoDB) {
   db.work_projects ??= [];
-  for (const a of db.artifacts) if (!a.work_project_id) a.work_project_id = defaultWorkProject(db, a.student_id, a.project_id).id;
+  for (const a of db.artifacts) {
+    if (!a.work_project_id) a.work_project_id = defaultWorkProject(db, a.student_id, a.project_id).id;
+    // Files from before stages existed go to the stage matching their milestone number.
+    if (a.stage == null) {
+      const wp = db.work_projects.find((w) => w.id === a.work_project_id);
+      const m = db.milestones.find((x) => x.id === a.milestone_id);
+      a.stage = Math.min(m?.number ?? 1, wp?.stages ?? 1);
+    }
+  }
 }
 
 export function saveDB() {

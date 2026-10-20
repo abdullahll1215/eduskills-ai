@@ -400,7 +400,9 @@ route("POST", "/api/student/artifacts", ({ db, user, body }) => {
     metrics = due ? { submitted_at: at.toISOString(), hours_before_due: round((due.getTime() - at.getTime()) / 3600000, 1), on_time: at <= due } : { submitted_at: at.toISOString() };
   }
   const wp = body.work_project_id ? ownWorkProject(db, user, body.work_project_id) : defaultWorkProject(db, user.id, m.project_id);
-  const a = { id: uid(), student_id: user.id, project_id: m.project_id, milestone_id: m.id, work_project_id: wp.id, kind: body.kind, title: body.title, url: body.url ?? null, metrics, created_at: nowIso() };
+  const stage = Number(body.stage ?? 1);
+  if (!Number.isInteger(stage) || stage < 1 || stage > (wp.stages ?? 1)) fail(422, "This project does not have that stage");
+  const a = { id: uid(), student_id: user.id, project_id: m.project_id, milestone_id: m.id, work_project_id: wp.id, stage, kind: body.kind, title: body.title, url: body.url ?? null, metrics, created_at: nowIso() };
   db.artifacts.push(a);
   return { id: a.id, metrics };
 });

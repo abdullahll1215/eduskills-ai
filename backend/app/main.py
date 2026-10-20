@@ -51,6 +51,14 @@ def _upgrade_schema():
                 " WHERE p.title = work_projects.name) WHERE EXISTS (SELECT 1 FROM projects p JOIN milestones m ON m.project_id = p.id"
                 " WHERE p.title = work_projects.name)"
             ))
+    if "stage" not in {c["name"] for c in inspect(engine).get_columns("artifacts")}:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE artifacts ADD COLUMN stage INTEGER"))
+            # Files from before stages existed go to the stage matching their milestone number.
+            conn.execute(text(
+                "UPDATE artifacts SET stage = (SELECT m.number FROM milestones m WHERE m.id = artifacts.milestone_id)"
+                " WHERE stage IS NULL"
+            ))
     with SessionLocal() as db:
         assign_orphan_artifacts(db)
 

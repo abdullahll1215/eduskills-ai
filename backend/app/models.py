@@ -272,6 +272,7 @@ class Artifact(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     milestone_id: Mapped[str] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"), index=True)
     work_project_id: Mapped[str | None] = mapped_column(ForeignKey("work_projects.id", ondelete="CASCADE"), nullable=True, index=True)
+    stage: Mapped[int | None] = mapped_column(Integer, nullable=True)  # stage of the work project (1..stages)
     kind: Mapped[str] = mapped_column(String(30))  # git_log | submission | link
     title: Mapped[str] = mapped_column(String(200))
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)

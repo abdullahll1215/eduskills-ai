@@ -239,10 +239,14 @@ def test_work_projects(client):
     wp = r.json()["id"]
     assert client.post("/api/student/work-projects", headers=h, json={"name": "Bad", "url": "github.com"}).status_code == 422
     m3 = _active(_project(client, h))
-    r = client.post("/api/student/artifacts", headers=h, json={"milestone_id": m3["id"], "work_project_id": wp, "kind": "link", "title": "Design doc", "url": "https://docs.example.com"})
+    r = client.post("/api/student/artifacts", headers=h, json={"milestone_id": m3["id"], "work_project_id": wp, "stage": 3, "kind": "link", "title": "Design doc", "url": "https://docs.example.com"})
     assert r.status_code == 201
+    bad = {"milestone_id": m3["id"], "work_project_id": wp, "stage": 5, "kind": "link", "title": "x"}
+    assert client.post("/api/student/artifacts", headers=h, json=bad).status_code == 422  # only 4 stages
     detail = client.get(f"/api/student/work-projects/{wp}", headers=h).json()
-    assert [f["title"] for f in detail["files"]] == ["Design doc"]
+    assert [(f["title"], f["stage"]) for f in detail["files"]] == [("Design doc", 3)]
+    seeded = client.get(f"/api/student/work-projects/{projects[0]['id']}", headers=h).json()["files"]
+    assert {f["stage"] for f in seeded} == {1, 2}  # M1 and M2 files land in stages 1 and 2
     other = login(client, "ali@student.kfu.edu.sa")
     assert client.get(f"/api/student/work-projects/{wp}", headers=other).status_code == 404
     assert client.delete(f"/api/student/work-projects/{wp}", headers=h).json()["ok"]

@@ -93,6 +93,7 @@ class WorkProjectIn(BaseModel):
 class ArtifactIn(BaseModel):
     milestone_id: str
     work_project_id: str | None = None
+    stage: int | None = Field(None, ge=1, le=10)
     kind: str = Field(pattern="^(git_log|submission|link)$")
     title: str = Field(min_length=1, max_length=200)
     url: str | None = Field(None, max_length=500)

@@ -10,6 +10,7 @@ import { fill } from "./shared";
 interface ArtifactRow {
   id: string;
   milestone_id: string;
+  stage: number;
   kind: string;
   title: string;
   url: string | null;
@@ -112,8 +113,9 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
   );
 }
 
-function FileForm({ projectId, milestoneId, onAdded }: { projectId: string; milestoneId: string | null; onAdded: () => void }) {
+function FileForm({ projectId, milestoneId, stages, initialStage, onAdded }: { projectId: string; milestoneId: string | null; stages: number; initialStage: number; onAdded: () => void }) {
   const t = useT();
+  const [stage, setStage] = useState(initialStage);
   const [kind, setKind] = useState<"git_log" | "submission" | "link">("git_log");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -130,7 +132,7 @@ function FileForm({ projectId, milestoneId, onAdded }: { projectId: string; mile
     if (!milestoneId) return setError(t("You need to join a project team before adding files."));
     try {
       await api("/api/student/artifacts", {
-        body: { milestone_id: milestoneId, work_project_id: projectId, kind, title, url: url || null, git_log: kind === "git_log" ? gitLog : null, submitted_at: kind === "submission" && submittedAt ? submittedAt : null },
+        body: { milestone_id: milestoneId, work_project_id: projectId, stage, kind, title, url: url || null, git_log: kind === "git_log" ? gitLog : null, submitted_at: kind === "submission" && submittedAt ? submittedAt : null },
       });
       onAdded();
     } catch (err) {
@@ -141,6 +143,25 @@ function FileForm({ projectId, milestoneId, onAdded }: { projectId: string; mile
   return (
     <form onSubmit={submit} className="space-y-4">
       {error && <Alert kind="error" onClose={() => setError(null)}>{error}</Alert>}
+      {stages > 1 && (
+        <div>
+          <label className="label">{t("Stage")}</label>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Stage")}>
+            {Array.from({ length: stages }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={stage === n}
+                onClick={() => setStage(n)}
+                className={`h-9 min-w-[2.25rem] rounded-lg border px-2 text-sm font-semibold transition ${stage === n ? "border-brand-600 bg-brand-600 text-white" : "border-slate-200 text-slate-600 hover:border-brand-300 hover:bg-brand-50"}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <label className="label">{t("File type")}</label>
         <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
@@ -222,7 +243,8 @@ function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => v
   const t = useT();
   const { data, loading, error, reload } = useFetch(() => api<WorkProject>(`/api/student/work-projects/${id}`), [id]);
   const milestoneId = useCurrentMilestoneId();
-  const [adding, setAdding] = useState(false);
+  // The stage the add-file window opens on; null = closed.
+  const [adding, setAdding] = useState<number | null>(null);
 
   if (loading && !data) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
@@ -270,23 +292,44 @@ function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => v
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-slate-900">{t("Project files")}</h3>
-            <button className="btn-primary" onClick={() => setAdding(true)}><FilePlus2 className="h-4 w-4" /> {t("Add file")}</button>
+            <button className="btn-primary" onClick={() => setAdding(Math.max(1, ...(data.files ?? []).map((f) => f.stage)))}><FilePlus2 className="h-4 w-4" /> {t("Add file")}</button>
           </div>
           {data.files?.length === 0 && (
             <Empty title={t("No files yet")} icon={<FilePlus2 className="h-8 w-8 text-slate-400" />}>
               {t("Add a commit log, a deliverable submission or a document link to this project.")}
             </Empty>
           )}
-          {data.files?.map((a) => <FileCard key={a.id} a={a} onDelete={() => removeFile(a.id)} />)}
+          {data.stages > 1 && !!data.files?.length
+            ? Array.from({ length: data.stages }, (_, i) => i + 1).map((n) => {
+                const files = (data.files ?? []).filter((f) => Math.min(f.stage, data.stages) === n);
+                return (
+                  <section key={n} className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-xs text-brand-700">{n}</span>
+                        {t("Stage {n}", { n })}
+                        <span className="text-xs font-normal text-slate-400">· {files.length === 1 ? t("1 file") : t("{n} files", { n: files.length })}</span>
+                      </h4>
+                      <button className="btn-ghost px-2 py-1 text-xs" onClick={() => setAdding(n)}><FilePlus2 className="h-3.5 w-3.5" /> {t("Add file")}</button>
+                    </div>
+                    {files.length === 0 && <div className="rounded-lg border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-400">{t("No files in this stage yet.")}</div>}
+                    {files.map((a) => <FileCard key={a.id} a={a} onDelete={() => removeFile(a.id)} />)}
+                  </section>
+                );
+              })
+            : data.files?.map((a) => <FileCard key={a.id} a={a} onDelete={() => removeFile(a.id)} />)}
         </div>
       </div>
 
-      <Modal open={adding} title={t("Add a file to {name}", { name: data.name })} onClose={() => setAdding(false)}>
+      <Modal open={adding !== null} title={t("Add a file to {name}", { name: data.name })} onClose={() => setAdding(null)}>
         <FileForm
+          key={adding ?? 0}
           projectId={id}
           milestoneId={milestoneId}
+          stages={data.stages}
+          initialStage={adding ?? 1}
           onAdded={() => {
-            setAdding(false);
+            setAdding(null);
             reload();
             onChanged();
           }}

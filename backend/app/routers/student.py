@@ -593,7 +593,7 @@ def _passport_csv(db: Session, user: User, project_id: str | None):
 
 
 def _artifact_out(a: Artifact) -> dict:
-    return {"id": a.id, "milestone_id": a.milestone_id, "work_project_id": a.work_project_id, "kind": a.kind, "title": a.title, "url": a.url, "metrics": a.metrics, "created_at": a.created_at}
+    return {"id": a.id, "milestone_id": a.milestone_id, "work_project_id": a.work_project_id, "stage": a.stage or 1, "kind": a.kind, "title": a.title, "url": a.url, "metrics": a.metrics, "created_at": a.created_at}
 
 
 def _own_work_project(db: Session, user: User, wp_id: str) -> WorkProject:
@@ -658,6 +658,9 @@ def add_artifact(body: ArtifactIn, user: User = Depends(student_only), db: Sessi
     m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
     _require_enrollment(db, user, m)
     wp = _own_work_project(db, user, body.work_project_id) if body.work_project_id else default_work_project(db, user.id, m.project_id)
+    stage = body.stage or 1
+    if stage > (wp.stages or 1):
+        raise HTTPException(422, "This project does not have that stage")
     metrics: dict = {}
     if body.kind == "git_log":
         commits = artifacts.parse_git_log(body.git_log or "")
@@ -666,7 +669,7 @@ def add_artifact(body: ArtifactIn, user: User = Depends(student_only), db: Sessi
         metrics = artifacts.commit_indicators(commits, m.due_date)
     elif body.kind == "submission":
         metrics = artifacts.submission_indicators(body.submitted_at or utcnow(), m.due_date)
-    a = Artifact(student_id=user.id, project_id=m.project_id, milestone_id=m.id, work_project_id=wp.id, kind=body.kind, title=body.title, url=body.url, metrics=metrics)
+    a = Artifact(student_id=user.id, project_id=m.project_id, milestone_id=m.id, work_project_id=wp.id, stage=stage, kind=body.kind, title=body.title, url=body.url, metrics=metrics)
     db.add(a)
     audit.log(db, user, "artifact.added", "artifact", a.id, body.kind)
     db.commit()

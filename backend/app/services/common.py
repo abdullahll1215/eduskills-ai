@@ -22,7 +22,10 @@ def default_work_project(db: Session, student_id: str, project_id: str) -> WorkP
 def assign_orphan_artifacts(db: Session) -> None:
     """Artifacts created before "My Projects" existed are grouped under the course project."""
     for a in db.scalars(select(Artifact).where(Artifact.work_project_id.is_(None))).all():
-        a.work_project_id = default_work_project(db, a.student_id, a.project_id).id
+        wp = default_work_project(db, a.student_id, a.project_id)
+        a.work_project_id = wp.id
+        m = db.get(Milestone, a.milestone_id)
+        a.stage = min(m.number, wp.stages or 1) if m else 1
     db.commit()
 
 
