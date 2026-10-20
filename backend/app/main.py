@@ -5,15 +5,19 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import seed
 from .config import get_settings
-from sqlalchemy import inspect, text
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
-from .database import Base, SessionLocal, engine
+from .database import SessionLocal, engine
+from .migration_runner import upgrade_database, verify_database_revision
 from .services.common import assign_orphan_artifacts
 from .services.locale import current_lang, lang_from_header
+from .services.report_state import lock_report_configuration
 from .routers import admin, advisor, auth, instructor, projects, student
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -24,42 +28,16 @@ FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def init_db():
-    """Creates tables and seeds demo data. Safe to call from several serverless instances at once."""
-    try:
-        Base.metadata.create_all(engine)
-        if settings.seed_demo_data:
-            seed.run()
-    except Exception:  # noqa: BLE001 - another instance won the race; the data is already there
-        logging.getLogger("eduskills").warning("Database initialisation skipped", exc_info=True)
-    try:
-        _upgrade_schema()
-    except Exception:  # noqa: BLE001
-        logging.getLogger("eduskills").warning("Schema upgrade skipped", exc_info=True)
-
-
-def _upgrade_schema():
-    """Adds columns introduced after a database was first created (create_all only adds new tables)."""
-    if "work_project_id" not in {c["name"] for c in inspect(engine).get_columns("artifacts")}:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE artifacts ADD COLUMN work_project_id VARCHAR(36) REFERENCES work_projects(id) ON DELETE CASCADE"))
-    if "stages" not in {c["name"] for c in inspect(engine).get_columns("work_projects")}:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE work_projects ADD COLUMN stages INTEGER NOT NULL DEFAULT 1"))
-            # Projects named after a course project take that project's number of milestones.
-            conn.execute(text(
-                "UPDATE work_projects SET stages = (SELECT COUNT(*) FROM milestones m JOIN projects p ON p.id = m.project_id"
-                " WHERE p.title = work_projects.name) WHERE EXISTS (SELECT 1 FROM projects p JOIN milestones m ON m.project_id = p.id"
-                " WHERE p.title = work_projects.name)"
-            ))
-    if "stage" not in {c["name"] for c in inspect(engine).get_columns("artifacts")}:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE artifacts ADD COLUMN stage INTEGER"))
-            # Files from before stages existed go to the stage matching their milestone number.
-            conn.execute(text(
-                "UPDATE artifacts SET stage = (SELECT m.number FROM milestones m WHERE m.id = artifacts.milestone_id)"
-                " WHERE stage IS NULL"
-            ))
+    """Fail on database errors. Production migrations run as a separate deployment step."""
+    if settings.auto_migrate:
+        upgrade_database(engine)
+    else:
+        verify_database_revision(engine)
+    if settings.seed_demo_data:
+        seed.run()
     with SessionLocal() as db:
+        lock_report_configuration(db, exclusive=True)
+        seed.seed_reference(db)
         assign_orphan_artifacts(db)
 
 
@@ -98,6 +76,11 @@ for r in (auth.router, student.router, student.chat_router, instructor.router, p
 
 @app.get("/api/health", tags=["auth & common"])
 def health():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "app": settings.app_name})
     return {"status": "ok", "app": settings.app_name}
 
 

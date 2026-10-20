@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import AIReport, Milestone, User
+from .report_state import is_current
 
 LEVEL_LABEL = {"ALIGNED": "Aligned", "MODERATE_GAP": "Moderate gap", "CRITICAL_GAP": "Critical blind spot"}
 
@@ -15,7 +16,7 @@ def student_reports(db: Session, student_id: str, project_id: str | None = None)
     q = select(AIReport).join(Milestone, AIReport.milestone_id == Milestone.id).where(AIReport.student_id == student_id)
     if project_id:
         q = q.where(AIReport.project_id == project_id)
-    return list(db.scalars(q.order_by(Milestone.number)))
+    return [r for r in db.scalars(q.order_by(Milestone.number)) if is_current(db, r)]
 
 
 def to_csv(db: Session, student: User, project_id: str | None = None) -> str:

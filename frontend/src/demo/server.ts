@@ -946,7 +946,7 @@ route("POST", "/api/admin/backups", ({ db, user }) => {
   admin(user);
   const snap = JSON.stringify({ ...db, backups: [] });
   const ok = JSON.parse(snap).users.length === db.users.length;
-  const b = { id: uid(), filename: `eduskills-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}.json`, size_bytes: snap.length, checksum: sha256(snap), verified: ok, details: `${db.users.length} users, ${db.evaluations.length} evaluations, ${db.reports.length} reports re-read successfully`, created_at: nowIso() };
+  const b = { id: uid(), filename: `eduskills-${new Date().toISOString().replace(/[:T-]/g, "").slice(0, 14)}.json`, size_bytes: snap.length, checksum: sha256(snap), verified: ok, details: `${db.users.length} users, ${db.evaluations.length} evaluations, ${db.reports.length} reports re-read successfully`, created_at: nowIso() };
   db.backups.push(b);
   log(db, user.id, "backup.created", "backup", b.id, `verified=${ok}`);
   return b;

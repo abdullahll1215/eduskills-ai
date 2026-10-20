@@ -9,6 +9,9 @@ os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_t
 os.environ["BACKUP_DIR"] = str(_tmp / "backups")
 os.environ["AI_API_KEY"] = ""  # always exercise the deterministic fallback engine in tests
 os.environ["SEED_DEMO_DATA"] = "true"
+os.environ["ENVIRONMENT"] = "test"
+os.environ["AUTO_MIGRATE"] = "true"
+os.environ["DATABASE_SCHEMA"] = os.environ.get("TEST_DATABASE_SCHEMA", "")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

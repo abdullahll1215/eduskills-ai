@@ -77,7 +77,7 @@ function SignupForm({ onDone, onCancel }: { onDone: (role: string) => void; onCa
             <input id="su-confirm" type="password" required className="input" value={form.confirm} onChange={(e) => set("confirm", e.target.value)} autoComplete="new-password" />
           </div>
         </div>
-        <div>
+        {projects.length > 0 && <div>
           <label className="label" htmlFor="su-team">{t("Project team (optional)")}</label>
           <select id="su-team" className="input" value={form.team_id} onChange={(e) => set("team_id", e.target.value)}>
             <option value="">{t("I'll be added by my instructor")}</option>
@@ -87,7 +87,7 @@ function SignupForm({ onDone, onCancel }: { onDone: (role: string) => void; onCa
               </optgroup>
             ))}
           </select>
-        </div>
+        </div>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy && <Loader2 className="h-4 w-4 animate-spin" />} {t("Create account")}
         </button>

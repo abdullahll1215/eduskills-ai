@@ -1,0 +1,11 @@
+# Backend reliability and Supabase integration
+
+Authorized scope: the user requested ownership and correction of the backend and verification/deployment of its database on Supabase, following the concrete audit. Preserve current frontend API contracts and the latest upstream project-stage feature. Do not replace FastAPI, migrate authentication to a different provider, invent Excel requirements, or modify legacy public-schema data.
+
+1. Reports represent current assessment inputs. Fingerprint evaluations, rubric and scoring inputs. Refresh after changes; withhold stale/incomplete reports from dashboards, exports and narrative consumers. Keep computation independent of AI; provider failure uses a declared deterministic fallback. Serialize conflicting PostgreSQL assessment/report transactions.
+2. New registrations cannot self-assign academic membership. Staff assigns enrollments. Other-student feedback is opt-in and restricted to shared active teams. Peer evaluation remains possible across teams in the same assigned course, preserving the current feature without platform-wide access.
+3. Hidden strengths do not trigger blind-spot interventions. Validate finite settings and positive bounded counts. Reject malformed configuration without partial writes.
+4. Supabase hosts the existing SQLAlchemy application in a private eduskills schema with a dedicated least-privilege backend database role. No anon/authenticated Data API grants; preserve public and all existing data. Use versioned Alembic migrations, fail on startup errors and verify database readiness. No silent temporary SQLite fallback in production. No demo accounts in production.
+5. PostgreSQL backup verification requires a real isolated restore; a JSON re-read must not claim restore success. Provide an executable restore-verification command and clear storage durability limits.
+
+Verification: test-first reproductions of the audit failures; full existing suite; fresh and repeated migration execution on SQLite and connected PostgreSQL; restricted-role API integration in an isolated test schema; deny anon/authenticated access; live metadata and advisors. Deployment completion requires observed runtime/API connectivity, not just table creation.

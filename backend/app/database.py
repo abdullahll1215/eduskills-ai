@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -14,6 +14,10 @@ if settings.database_url.startswith("sqlite"):
     db_path = settings.database_url.replace("sqlite:///", "")
     if db_path and db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+else:
+    connect_args = {"connect_timeout": 10}
+    if ".supabase." in settings.database_url:
+        connect_args["sslmode"] = "require"
 
 engine_kwargs: dict = {"pool_pre_ping": True}
 if ON_VERCEL and not settings.database_url.startswith("sqlite"):
@@ -34,7 +38,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(schema=settings.database_schema or None)
 
 
 def get_db():

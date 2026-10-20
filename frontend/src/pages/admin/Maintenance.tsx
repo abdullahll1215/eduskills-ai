@@ -1,4 +1,4 @@
-import { CheckCircle2, HardDriveDownload, Loader2, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, HardDriveDownload, Info, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
@@ -24,8 +24,10 @@ export default function Maintenance() {
     setBusy(true);
     try {
       const r = await api<Backup>("/api/admin/backups", { method: "POST" });
-      setMsg({ kind: r.verified ? "success" : "error", text: r.verified ? t("Backup {file} created and verified ({details}).", { file: r.filename, details: r.details }) : t("Backup verification FAILED — emergency alert raised. {details}", { details: r.details }) });
+      setMsg({ kind: r.verified ? "success" : "info", text: r.verified ? t("Backup {file} created and verified ({details}).", { file: r.filename, details: r.details }) : t("Data export created. Restore verification is still required. {details}", { details: r.details }) });
       reload();
+    } catch (err) {
+      setMsg({ kind: "error", text: (err as Error).message });
     } finally {
       setBusy(false);
     }
@@ -40,12 +42,12 @@ export default function Maintenance() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("Backup & Retention")} subtitle={t("Disaster recovery: database backups with restore-integrity verification, and data-retention policy (GDPR-style compliance).")} />
+      <PageHeader title={t("Backup & Retention")} subtitle={t("Create database backups and manage data retention. Check verification details before relying on a backup.")} />
       {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card p-6">
           <h2 className="font-semibold text-slate-900">{t("Database backup")}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t("Creates a consistent copy, re-opens it to run an integrity check and stores a SHA-256 checksum.")}</p>
+          <p className="mt-1 text-sm text-slate-500">{t("Creates a consistent backup with a SHA-256 checksum. PostgreSQL exports require a separate restore test.")}</p>
           <button className="btn-primary mt-4" onClick={backup} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />} {t("Run backup now")}</button>
         </div>
         <div className="card p-6">
@@ -66,7 +68,7 @@ export default function Maintenance() {
                   <td className="td whitespace-nowrap">{fmtDate(b.created_at, true)}</td>
                   <td className="td font-mono text-xs">{b.filename}</td>
                   <td className="td">{t("{n} KB", { n: (b.size_bytes / 1024).toFixed(0) })}</td>
-                  <td className="td">{b.verified ? <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-label={t("Verified")} /> : <XCircle className="h-5 w-5 text-red-500" aria-label={t("Verification failed")} />}</td>
+                  <td className="td">{b.verified ? <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-label={t("Verified")} /> : <Info className="h-5 w-5 text-slate-500" aria-label={t("Restore not verified")} />}</td>
                   <td className="td text-xs text-slate-500">{b.details}</td>
                   <td className="td font-mono text-[10px] text-slate-400">{b.checksum.slice(0, 16)}…</td>
                 </tr>

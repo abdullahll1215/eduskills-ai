@@ -5,11 +5,11 @@ import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, inspect, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..database import engine
+from ..database import Base, engine
 from ..models import AuditLog, BackupRecord, ChatMessage, Notification, utcnow
 
 
@@ -24,13 +24,14 @@ def _sha256(path: Path) -> str:
 def run_backup(db: Session) -> BackupRecord:
     settings = get_settings()
     settings.backup_dir.mkdir(parents=True, exist_ok=True)
-    stamp = utcnow().strftime("%Y%m%d-%H%M%S")
+    stamp = utcnow().strftime("%Y%m%d-%H%M%S-%f")
     url = settings.database_url
 
     if url.startswith("sqlite"):
         target = settings.backup_dir / f"eduskills-{stamp}.db"
         src = sqlite3.connect(url.replace("sqlite:///", ""))
         dst = sqlite3.connect(target)
+        target.chmod(0o600)
         with dst:
             src.backup(dst)
         src.close()
@@ -39,16 +40,17 @@ def run_backup(db: Session) -> BackupRecord:
     else:
         target = settings.backup_dir / f"eduskills-{stamp}.json"
         dump = {}
-        with engine.connect() as conn:
-            for table in inspect(engine).get_table_names():
-                dump[table] = [dict(r._mapping) for r in conn.execute(text(f'SELECT * FROM "{table}"'))]
-        target.write_text(json.dumps(dump, default=str))
-        try:
-            restored = json.loads(target.read_text())
-            verified = set(restored) == set(dump) and all(len(restored[t]) == len(dump[t]) for t in dump)
-            details = f"{len(dump)} tables, {sum(len(v) for v in dump.values())} rows re-read successfully"
-        except ValueError as exc:
-            verified, details = False, str(exc)
+        isolation = "REPEATABLE READ" if engine.dialect.name == "postgresql" else "SERIALIZABLE"
+        with engine.connect().execution_options(isolation_level=isolation) as conn:
+            with conn.begin():
+                for table in Base.metadata.sorted_tables:
+                    dump[table.name] = [dict(r._mapping) for r in conn.execute(select(table))]
+        with target.open("x") as stream:
+            target.chmod(0o600)
+            json.dump({"format": "eduskills-data-export-v1", "schema": settings.database_schema,
+                "restore_verified": False, "tables": dump}, stream, default=str)
+        verified = False
+        details = f"Data export only: {len(dump)} application tables. PostgreSQL restore has not been verified."
 
     rec = BackupRecord(
         filename=target.name, size_bytes=target.stat().st_size, checksum=_sha256(target), verified=verified, details=details

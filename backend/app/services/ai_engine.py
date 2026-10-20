@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, object_session
 
 from ..models import (
     AIReport,
-    BlindSpotLevel,
     DeltaMetric,
     Intervention,
     LearningResource,
@@ -25,6 +24,7 @@ from . import audit, nlp
 from .analytics import StudentSnapshot, classify, overall_level, snapshot
 from .locale import current_lang
 from .settings_store import AIConfig, ai_config, scoring
+from .report_state import FINGERPRINT_KEY, input_fingerprint, is_current, lock_student_milestone
 
 logger = logging.getLogger("eduskills.ai")
 
@@ -83,7 +83,7 @@ def build_prompt(student_name: str, milestone: Milestone, snap: StudentSnapshot,
     return f"""Student first name: {first}
 Project milestone: M{milestone.number} - {milestone.name}
 
-Quantitative metrics per soft skill (1-5 Likert scale, external = 60% instructor + 40% peer average):
+Quantitative metrics per soft skill (1-5 Likert scale, external = {snap.instructor_weight:.0%} instructor + {snap.peer_weight:.0%} peer average):
 {chr(10).join(rows)}
 
 Overall: self={snap.overall_self}, external={snap.overall_external}
@@ -348,7 +348,7 @@ def _fallback_report_ar(student_name: str, snap: StudentSnapshot, themes: dict) 
     ext, slf = snap.overall_external or 0, snap.overall_self or 0
     paragraphs = [
         f"مرحبًا {first}، يجمع هذا التقرير بين تقييمك الذاتي والتقييمات المجهولة من {snap.peer_count} من زملائك وتقييم معلمك. "
-        f"متوسط تقييمك لنفسك {slf:.1f} من 5، بينما الدرجة الخارجية الموزونة (60% المعلم، 40% الزملاء) {ext:.1f} من 5."
+        f"متوسط تقييمك لنفسك {slf:.1f} من 5، بينما الدرجة الخارجية الموزونة ({snap.instructor_weight:.0%} المعلم، {snap.peer_weight:.0%} الزملاء) {ext:.1f} من 5."
     ]
     if worst and worst.gap is not None and worst.direction == "overestimate":
         paragraphs.append(
@@ -401,7 +401,7 @@ def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict, lang
     paragraphs = [
         f"{first}, this report combines your self-assessment, the anonymous evaluations of {snap.peer_count} "
         f"teammates and your instructor's evaluation. Your overall self-rating is {slf:.1f}/5 while the weighted "
-        f"external score (60% instructor, 40% peers) is {ext:.1f}/5."
+        f"external score ({snap.instructor_weight:.0%} instructor, {snap.peer_weight:.0%} peers) is {ext:.1f}/5."
     ]
     if worst and worst.gap is not None and worst.direction == "overestimate":
         paragraphs.append(
@@ -505,12 +505,16 @@ def recommend_resources(db: Session, snap: StudentSnapshot, limit: int = 4) -> l
 
 def generate_report(db: Session, student_id: str, milestone_id: str, force: bool = False) -> AIReport | None:
     """UC-04 + UC-05 pipeline. Returns None when the 360° data is not complete yet."""
+    lock_student_milestone(db, student_id, milestone_id)
     cfg = scoring(db)
     snap = snapshot(db, student_id, milestone_id, cfg)
-    if not snap.complete:
-        return None
     existing = db.scalar(select(AIReport).where(AIReport.student_id == student_id, AIReport.milestone_id == milestone_id))
-    if existing and not force:
+    if not snap.complete:
+        if existing:
+            db.delete(existing)
+        return None
+    fingerprint = input_fingerprint(db, student_id, milestone_id)
+    if existing and not force and existing.content.get(FINGERPRINT_KEY) == fingerprint:
         return existing
 
     student = db.get(User, student_id)
@@ -531,6 +535,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
     level = overall_level(snap, cfg)
     overall_gap = abs((snap.overall_external or 0) - (snap.overall_self or 0))
     content = {
+        FINGERPRINT_KEY: fingerprint,
         "headline": generated.headline,
         "paragraphs": generated.narrative,
         "strengths": generated.strengths,
@@ -592,7 +597,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
             link=f"/student/report?milestone={milestone_id}",
         )
 
-    if level == BlindSpotLevel.CRITICAL_GAP:
+    if any(s.direction == "overestimate" and s.gap > cfg.critical_threshold for s in snap.skills):
         _raise_auto_intervention(db, snap, milestone, student)
     audit.log(db, None, "report.generated", "ai_report", report.id, f"source={generated.source} level={level.value}")
     return report
@@ -630,6 +635,7 @@ def _arabic_version(db: Session, rep: AIReport) -> dict | None:
 def localized_content(rep: AIReport) -> dict:
     """Report content in the visitor's language. The Arabic text is generated once and stored with the report."""
     content = dict(rep.content or {})
+    content.pop(FINGERPRINT_KEY, None)
     translations = content.pop("i18n", None) or {}
     if current_lang.get() != "ar":
         return content
@@ -639,7 +645,7 @@ def localized_content(rep: AIReport) -> dict:
         arabic = _arabic_version(db, rep) if db else None
         if not arabic:
             return content
-        rep.content = {**content, "i18n": {**translations, "ar": arabic}}
+        rep.content = {**rep.content, "i18n": {**translations, "ar": arabic}}
         try:
             db.commit()
         except Exception:  # noqa: BLE001 - serving the text matters more than caching it
@@ -658,7 +664,7 @@ def _raise_auto_intervention(db: Session, snap: StudentSnapshot, milestone: Mile
     )
     if open_exists:
         return
-    worst = snap.max_gap_skill
+    worst = max((s for s in snap.skills if s.direction == "overestimate"), key=lambda s: s.gap)
     reason = (
         f"Critical blind spot detected in {worst.name} at M{milestone.number}: "
         f"self {worst.self_score} vs external {worst.external:.1f} (delta {worst.gap:.1f})."
@@ -692,7 +698,8 @@ def chat_reply(db: Session, user: User, history: list[dict], message: str) -> tu
 
 
 def _latest_report(db: Session, user: User) -> AIReport | None:
-    return db.scalar(select(AIReport).where(AIReport.student_id == user.id).order_by(AIReport.generated_at.desc()))
+    return next((r for r in db.scalars(select(AIReport).where(AIReport.student_id == user.id)
+        .order_by(AIReport.generated_at.desc())) if is_current(db, r)), None)
 
 
 def _student_context(db: Session, user: User) -> str:
@@ -729,12 +736,13 @@ def _rule_based_reply(db: Session, user: User, message: str) -> str:
         items = "\n".join(f"• {r['title']} ({r['provider']})" for r in res) or "-"
         return ("هذه مصادر مقترحة لك:\n" if arabic else "Here are resources matched to your gaps:\n") + items
     if any(k in low for k in ("how", "calculat", "formula", "delta", "كيف", "حساب", "المعادلة")):
+        cfg = scoring(db)
         return (
-            "الدرجة الخارجية = 60% تقييم المدرّس + 40% متوسط تقييم الزملاء. الفجوة Δ = |الخارجية − الذاتية|. "
-            "إذا Δ ≤ 1.5 فأنت متوافق، بين 1.5 و2.0 فجوة متوسطة، وأكثر من 2.0 نقطة عمياء حرجة."
+            f"الدرجة الخارجية = {cfg.instructor_weight:.0%} تقييم المدرّس + {cfg.peer_weight:.0%} متوسط تقييم الزملاء. الفجوة Δ = |الخارجية − الذاتية|. "
+            f"إذا Δ ≤ {cfg.moderate_threshold:g} فأنت متوافق، حتى {cfg.critical_threshold:g} فجوة متوسطة، وما فوقها فجوة حرجة؛ يحدد اتجاه الفرق إن كانت نقطة عمياء أو قوة خفية."
             if arabic
-            else "External score = 60% instructor + 40% peer average. Delta = |external − self|. "
-            "Delta ≤ 1.5 is aligned, 1.5–2.0 is a moderate gap and above 2.0 is a critical blind spot."
+            else f"External score = {cfg.instructor_weight:.0%} instructor + {cfg.peer_weight:.0%} peer average. Delta = |external − self|. "
+            f"Delta ≤ {cfg.moderate_threshold:g} is aligned, up to {cfg.critical_threshold:g} is moderate, and above that is critical. The direction distinguishes a blind spot from a hidden strength."
         )
     if any(k in low for k in ("strength", "good at", "best", "قوة", "أفضل")):
         return (
