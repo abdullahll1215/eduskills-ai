@@ -300,5 +300,6 @@ const dict: Record<string, string> = {
   "You and 1 teammate": "أنت وزميل واحد",
   "You and {n} teammates": "أنت و{n} زملاء",
   "Choose the student from the list.": "اختر الطالب من القائمة.",
+  "Share the invite code with classmates so they can join your team.": "شارك كود الدعوة مع زملائك عشان ينضمون لتيمك.",
 };
 export default dict;

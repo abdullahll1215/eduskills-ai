@@ -155,6 +155,19 @@ route("GET", "/api/student/projects", ({ db, user }) => {
     };
   }).filter(Boolean);
 });
+route("GET", "/api/student/personal-self-assessment", ({ db, user }) => {
+  studentOnly(user);
+  const a = db.personal_assessments.find((x) => x.student_id === user.id);
+  return { milestone: null, competencies: competencies(db).map(compOut), submission: a ? { ratings: a.ratings, created_at: a.updated_at, is_locked: false } : null };
+});
+route("POST", "/api/student/personal-self-assessment", ({ db, user, body }) => {
+  studentOnly(user);
+  const ratings = validateRatings(db, body.ratings);
+  const a = db.personal_assessments.find((x) => x.student_id === user.id);
+  if (a) Object.assign(a, { ratings, updated_at: nowIso() });
+  else db.personal_assessments.push({ student_id: user.id, ratings, updated_at: nowIso() });
+  return { message: "Self-assessment saved", created_at: nowIso() };
+});
 route("GET", "/api/student/self-assessment", ({ db, user, q }) => {
   studentOnly(user);
   const { m } = msForStudent(db, user, q.get("milestone_id"));
@@ -200,22 +213,31 @@ function evaluationStatus(db: DemoDB, reviewer: any, tid: string, m: any, selfFi
   if (selfFirst && !db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === tid && e.eval_type === "self")) return "waiting_self";
   return "available";
 }
+/** Active courses where both students are in the same team (mirrors _shared_team_projects). */
+function sharedTeamProjects(db: DemoDB, reviewerId: string, targetId: string): Set<string> {
+  const myTeams = new Set(db.enrollments.filter((e) => e.user_id === reviewerId && e.team_id).map((e) => e.team_id));
+  return new Set(db.enrollments
+    .filter((e) => e.user_id === targetId && myTeams.has(e.team_id) && db.projects.find((p) => p.id === e.project_id)?.is_active)
+    .map((e) => e.project_id));
+}
 route("GET", "/api/student/evaluation-targets", ({ db, user, q }) => {
   studentOnly(user);
   const c = scoring(db);
-  const mine = db.enrollments.filter((e) => e.user_id === user.id);
-  const myTeams = new Set(mine.map((e) => e.team_id).filter(Boolean));
+  const myTeams = new Set(db.enrollments.filter((e) => e.user_id === user.id && e.team_id).map((e) => e.team_id));
+  const open = setting(db, "public_feedback_profiles") === "true";
   const term = (q.get("q") ?? "").trim().toLowerCase();
   return db.users
     .filter((u) => u.role === "student" && u.is_active && u.id !== user.id && (!term || `${u.full_name} ${u.student_number ?? ""}`.toLowerCase().includes(term)))
-    .map((u) => ({ u, e: db.enrollments.find((x) => x.user_id === u.id) }))
-    .map((r) => ({ ...r, mate: !!r.e && myTeams.has(r.e.team_id) }))
+    .filter((u) => open || db.enrollments.some((e) => e.user_id === u.id && myTeams.has(e.team_id)))
+    .map((u) => ({ u, shared: sharedTeamProjects(db, user.id, u.id) }))
+    .map(({ u, shared }) => ({ u, shared, mate: shared.size > 0, e: db.enrollments.find((x) => x.user_id === u.id && (!shared.size || shared.has(x.project_id))) }))
     .sort((a, b) => Number(b.mate) - Number(a.mate) || a.u.full_name.localeCompare(b.u.full_name))
     .slice(0, 20)
-    .map(({ u, e, mate }) => ({
+    .map(({ u, e, mate, shared }) => ({
       id: u.id, full_name: u.full_name, student_number: u.student_number,
       team: e ? teamName(db, e.team_id) : null, project: e ? db.projects.find((p) => p.id === e.project_id)?.title ?? null : null,
-      is_teammate: mate, status: evaluationStatus(db, user, u.id, openMilestoneOf(db, u.id, mine[0]?.project_id), c.selfFirst),
+      is_teammate: mate,
+      status: mate ? evaluationStatus(db, user, u.id, openMilestoneOf(db, u.id, [...shared][0]), c.selfFirst) : "view_only",
     }));
 });
 // ------------------------------------------------------- team membership --
@@ -259,11 +281,11 @@ route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
   if (body.target_id === user.id) fail(422, "You cannot evaluate yourself as a peer");
   const target = db.users.find((u) => u.id === body.target_id && u.role === "student" && u.is_active);
   if (!target) fail(404, "Student not found");
-  // Any student on the platform can be evaluated, within that student's open evaluation period.
-  const preferred = body.milestone_id ? db.milestones.find((x) => x.id === body.milestone_id) : null;
-  const m = preferred && db.enrollments.some((e) => e.user_id === body.target_id && e.project_id === preferred.project_id)
-    ? preferred
-    : openMilestoneOf(db, body.target_id, preferred?.project_id) ?? fail(409, "No evaluation period is open for this student right now");
+  const shared = sharedTeamProjects(db, user.id, body.target_id);
+  if (!shared.size) fail(403, "You may only evaluate students in your own team");
+  const preferred = body.milestone_id ? db.milestones.find((x) => x.id === body.milestone_id) ?? fail(404, "Milestone not found") : null;
+  if (preferred && !shared.has(preferred.project_id)) fail(403, "You may only evaluate students in your own team");
+  const m = preferred ?? openMilestoneOf(db, body.target_id, [...shared][0]) ?? fail(409, "No evaluation period is open for this student right now");
   isOpen(m);
   const c = scoring(db);
   if (c.selfFirst && !db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.eval_type === "self")) fail(409, "This student has not completed their self-assessment yet");
@@ -348,7 +370,13 @@ route("GET", "/api/student/profiles/:sid/feedback", ({ db, user, p }) => {
   const info = { id: t.id, full_name: t.full_name, student_number: t.student_number, team: e ? teamName(db, e.team_id) : null };
   if (!e) return { student: info, feedback: null };
   log(db, user.id, "feedback.profile_viewed", "user", t.id);
-  return { student: info, feedback: allFeedback(db, t.id, msOf(db, e.project_id)) };
+  const summary: any = allFeedback(db, t.id, msOf(db, e.project_id));
+  if (t.id !== user.id && !sharedTeamProjects(db, user.id, t.id).has(e.project_id)) {
+    // Outside the team only released aggregate scores are shown.
+    summary.comments = [];
+    summary.instructor_comments = [];
+  }
+  return { student: info, feedback: summary };
 });
 route("GET", "/api/student/dashboard", ({ db, user, q }) => {
   studentOnly(user);

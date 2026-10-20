@@ -145,9 +145,12 @@ export default function TeamPage() {
   const { data, loading, error } = useFetch(() => api<MyTeam[]>("/api/student/team"));
   if (loading && !data) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
+  const inTeam = !!data?.some((d) => d.team);
   return <div className="space-y-6">
+    {inTeam && <PageHeader title={t("My Team")} subtitle={t("Share the invite code with classmates so they can join your team.")} />}
     <TeamStrip />
-    <TeamSetup onDone={() => navigate("/student")} />
+    {/* A student has one team per course, so the join/create forms are only for students without one. */}
+    {!inTeam && <TeamSetup onDone={() => navigate("/student")} />}
     <Link className="btn-ghost" to="/student">{t("Continue exploring")}</Link>
   </div>;
 }
