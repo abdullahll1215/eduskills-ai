@@ -1,4 +1,3 @@
--- Apply together with the matching API deployment (after eduskills_0005).
 BEGIN;
 
 DO $$ BEGIN
