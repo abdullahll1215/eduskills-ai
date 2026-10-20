@@ -238,5 +238,10 @@ const dict: Record<string, string> = {
   "1 stage": "مرحلة واحدة",
   "2 stages": "مرحلتان",
   "{n} stages": "{n} مراحل",
+  "Stage": "المرحلة",
+  "Stage {n}": "المرحلة {n}",
+  "No files in this stage yet.": "لا توجد ملفات في هذه المرحلة بعد.",
+  "1 file": "ملف واحد",
+  "{n} files": "{n} ملفات",
 };
 export default dict;
