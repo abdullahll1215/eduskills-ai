@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     backup_dir: Path = BASE_DIR / "data" / "backups"
     seed_demo_data: bool = False
+    # First administrator, created once at start-up when the database has no admin yet.
+    admin_email: str = ""
+    admin_password: str = ""
+    admin_name: str = "System Administrator"
 
     @model_validator(mode="after")
     def validate_deployment(self):
@@ -53,6 +57,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires an explicit PostgreSQL DATABASE_URL")
             if self.seed_demo_data:
                 raise ValueError("Demo accounts must not be seeded in production")
+            if self.admin_email and len(self.admin_password) < 12:
+                raise ValueError("ADMIN_PASSWORD must have at least 12 characters in production")
             for name, default in (("secret_key", "change-me-in-production-please-use-a-long-random-string"),
                                   ("anonymization_salt", "eduskills-peer-salt")):
                 value = getattr(self, name)

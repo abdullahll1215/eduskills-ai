@@ -34,6 +34,26 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_work_project_members_work_project_id'), 'work_project_members', ['work_project_id'], schema=schema)
     op.create_index(op.f('ix_work_project_members_user_id'), 'work_project_members', ['user_id'], schema=schema)
+    _secure_for_backend_role(schema)
+
+
+def _secure_for_backend_role(schema: str | None) -> None:
+    """Same protection the Supabase baseline gives every application table: RLS on, browser roles
+    locked out, and data access for the restricted backend role only (when that role exists)."""
+    if op.get_bind().dialect.name != "postgresql":
+        return
+    table = f'"{schema}".work_project_members' if schema else "work_project_members"
+    op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    op.execute(f"""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            REVOKE ALL ON {table} FROM PUBLIC, anon, authenticated;
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'eduskills_app') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO eduskills_app;
+            CREATE POLICY backend_access ON {table} FOR ALL TO eduskills_app USING (true) WITH CHECK (true);
+          END IF;
+        END $$;""")
 
 
 def downgrade() -> None:

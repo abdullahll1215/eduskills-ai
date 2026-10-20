@@ -9,6 +9,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .models import (
     Artifact,
@@ -130,6 +131,21 @@ NEGATIVE_COMMENTS = {
 
 def _clip(x: float) -> int:
     return max(1, min(5, round(x)))
+
+
+def bootstrap_admin(db: Session) -> bool:
+    """Creates the first administrator from ADMIN_EMAIL / ADMIN_PASSWORD when no admin exists yet.
+    Later changes to those settings do nothing, so the password can be changed in the app."""
+    settings = get_settings()
+    email = settings.admin_email.strip().lower()
+    if not email or not settings.admin_password:
+        return False
+    if db.scalar(select(User.id).where(User.role == Role.ADMIN.value)) or db.scalar(select(User.id).where(User.email == email)):
+        return False
+    db.add(User(full_name=settings.admin_name.strip() or "System Administrator", email=email, role=Role.ADMIN.value,
+                password_hash=hash_password(settings.admin_password)))
+    db.commit()
+    return True
 
 
 def seed_reference(db: Session) -> dict[str, Competency]:

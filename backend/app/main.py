@@ -38,6 +38,7 @@ def init_db():
     with SessionLocal() as db:
         lock_report_configuration(db, exclusive=True)
         seed.seed_reference(db)
+        seed.bootstrap_admin(db)
         assign_orphan_artifacts(db)
         ensure_codes(db)
 
