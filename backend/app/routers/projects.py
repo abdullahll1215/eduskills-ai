@@ -9,7 +9,7 @@ from ..deps import instructor_only
 from ..models import Enrollment, Milestone, Project, Role, Team, User
 from ..schemas import EnrollmentIn, MilestoneIn, ProjectIn, TeamIn
 from ..services import audit
-from ..services.common import ensure_manage, get_or_404, milestone_out, new_code, students_of_project, user_out
+from ..services.common import ensure_manage, get_or_404, milestone_out, new_course_number, students_of_project, team_code, user_out
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -37,6 +37,12 @@ def _project_out(db: Session, p: Project) -> dict:
     }
 
 
+def _ensure_course_number_free(db: Session, number: str, project_id: str | None = None) -> None:
+    other = db.scalar(select(Project.id).where(Project.join_code == number))
+    if other and other != project_id:
+        raise HTTPException(409, "Another course already uses this course number")
+
+
 @router.get("")
 def list_projects(user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     q = select(Project).order_by(Project.created_at.desc())
@@ -55,8 +61,10 @@ def get_project(project_id: str, user: User = Depends(instructor_only), db: Sess
 @router.post("", status_code=201)
 def create_project(body: ProjectIn, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     instructor_id = body.instructor_id if user.role == Role.ADMIN.value and body.instructor_id else user.id
+    if body.course_number:
+        _ensure_course_number_free(db, body.course_number)
     p = Project(title=body.title, description=body.description, instructor_id=instructor_id, is_active=body.is_active,
-                join_code=new_code(db, Project, Project.join_code))
+                join_code=body.course_number or new_course_number(db))
     db.add(p)
     db.flush()
     for i, name in enumerate(["Requirements", "Design", "Implementation"], start=1):
@@ -72,6 +80,9 @@ def update_project(project_id: str, body: ProjectIn, user: User = Depends(instru
     p = get_or_404(db, Project, project_id, "Project")
     ensure_manage(user, p)
     p.title, p.description, p.is_active = body.title, body.description, body.is_active
+    if body.course_number and body.course_number != p.join_code:
+        _ensure_course_number_free(db, body.course_number, p.id)
+        p.join_code = body.course_number
     if user.role == Role.ADMIN.value and body.instructor_id:
         p.instructor_id = body.instructor_id
     audit.log(db, user, "project.updated", "project", p.id)
@@ -142,10 +153,10 @@ def delete_milestone(milestone_id: str, user: User = Depends(instructor_only), d
 def add_team(project_id: str, body: TeamIn, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     p = get_or_404(db, Project, project_id, "Project")
     ensure_manage(user, p)
-    t = Team(project_id=p.id, team_name=body.team_name, invite_code=new_code(db, Team, Team.invite_code))
+    t = Team(project_id=p.id, team_name=body.team_name, invite_code=team_code(db, p.join_code or "TEAM", body.team_name))
     db.add(t)
     db.commit()
-    return {"id": t.id, "team_name": t.team_name}
+    return {"id": t.id, "team_name": t.team_name, "invite_code": t.invite_code}
 
 
 @router.put("/teams/{team_id}")

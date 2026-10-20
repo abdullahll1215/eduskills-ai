@@ -19,6 +19,7 @@ from ..models import (
     Milestone,
     Moderation,
     Project,
+    PersonalSelfAssessment,
     Role,
     SkillRating,
     Team,
@@ -27,10 +28,10 @@ from ..models import (
     WorkProjectMember,
     utcnow,
 )
-from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, CreateTeamIn, JoinTeamIn, MembersIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
+from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, CreateTeamIn, JoinTeamIn, MembersIn, PeerEvaluationIn, RatingsMixin, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
-from ..services.common import competency_out, default_work_project, enrollment_of, new_code, normalise_code, get_or_404, milestone_out, teammates, validate_ratings
+from ..services.common import competency_out, course_number_of, default_work_project, enrollment_of, find_team_by_code, team_code, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
 from ..services.report_state import is_current, lock_student_milestone
 
@@ -126,6 +127,33 @@ def my_projects(user: User = Depends(student_only), db: Session = Depends(get_db
 
 
 # ------------------------------------------------------------- UC-01 --
+
+
+@router.get("/personal-self-assessment")
+def get_personal_self_assessment(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    assessment = db.get(PersonalSelfAssessment, user.id)
+    return {
+        "milestone": None,
+        "competencies": [competency_out(c) for c in analytics.competencies(db)],
+        "submission": {"ratings": assessment.ratings, "created_at": assessment.updated_at, "is_locked": False} if assessment else None,
+    }
+
+
+@router.post("/personal-self-assessment", status_code=201)
+def save_personal_self_assessment(body: RatingsMixin, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    ratings = validate_ratings(db, body.ratings)
+    # Serialize first saves and edits for this owner, including when no assessment exists yet.
+    db.execute(select(User.id).where(User.id == user.id).with_for_update())
+    assessment = db.get(PersonalSelfAssessment, user.id)
+    if assessment is None:
+        assessment = PersonalSelfAssessment(student_id=user.id, ratings=ratings)
+        db.add(assessment)
+    else:
+        assessment.ratings = ratings
+        assessment.updated_at = utcnow()
+    audit.log(db, user, "assessment.personal_saved", "user", user.id)
+    db.commit()
+    return {"message": "Self-assessment saved", "created_at": assessment.updated_at}
 
 
 @router.get("/self-assessment")
@@ -229,7 +257,7 @@ def my_teams(user: User = Depends(student_only), db: Session = Depends(get_db)):
 
 @router.post("/team/join")
 def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    team = db.scalar(select(Team).where(Team.invite_code == normalise_code(body.code)))
+    team = find_team_by_code(db, body.code)
     if not team:
         raise HTTPException(404, "No team has this invite code")
     enr = _place_in_team(db, user, team)
@@ -242,13 +270,20 @@ def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session 
 
 @router.post("/team/create", status_code=201)
 def create_team(body: CreateTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    project = db.scalar(select(Project).where(Project.join_code == normalise_code(body.course_code)))
+    number = course_number_of(body.course_code)
+    project = db.scalar(select(Project).where(Project.join_code == number))
     if not project:
-        raise HTTPException(404, "No course has this code. Ask your instructor for the course code.")
+        # A course number nobody has used yet starts a new course; an instructor can be assigned later.
+        project = Project(title=f"Course {number}", join_code=number, is_active=True)
+        db.add(project)
+        db.flush()
+        for i, stage in enumerate(["Requirements", "Design", "Implementation"], start=1):
+            db.add(Milestone(project_id=project.id, number=i, name=stage, status="active" if i == 1 else "planned"))
+        audit.log(db, user, "project.created_by_student", "project", project.id, number)
     name = body.team_name.strip()
     if db.scalar(select(Team.id).where(Team.project_id == project.id, Team.team_name.ilike(name))):
         raise HTTPException(409, "A team with this name already exists in this course")
-    team = Team(project_id=project.id, team_name=name, invite_code=new_code(db, Team, Team.invite_code))
+    team = Team(project_id=project.id, team_name=name, invite_code=team_code(db, number, name))
     db.add(team)
     db.flush()
     db.refresh(team)
@@ -290,7 +325,7 @@ def peers_to_evaluate(milestone_id: str, user: User = Depends(student_only), db:
                 "id": t.id,
                 "full_name": t.full_name,
                 "evaluated": t.id in done,
-                "available": (t.id in self_done) or not cfg.require_self_before_peer,
+                "available": m.is_open and ((t.id in self_done) or not cfg.require_self_before_peer),
             }
             for t in mates
         ],
@@ -323,37 +358,42 @@ def _evaluation_status(db: Session, reviewer: User, target_id: str, m: Milestone
     return "available"
 
 
+def _shared_team_projects(db: Session, reviewer_id: str, target_id: str) -> set[str]:
+    mine = select(Enrollment.team_id).where(Enrollment.user_id == reviewer_id, Enrollment.team_id.is_not(None))
+    return set(db.scalars(select(Enrollment.project_id).join(Project, Project.id == Enrollment.project_id).where(
+        Enrollment.user_id == target_id, Enrollment.team_id.in_(mine), Project.is_active.is_(True))))
+
+
 @router.get("/evaluation-targets")
 def evaluation_targets(q: str = "", user: User = Depends(student_only), db: Session = Depends(get_db)):
-    """Any student on the platform can be evaluated; teammates are listed first."""
+    """Only teammates can be evaluated. Other published profiles are view-only."""
     cfg = scoring(db)
-    my_enrollments = list(db.scalars(select(Enrollment).where(Enrollment.user_id == user.id)))
-    my_teams = {e.team_id for e in my_enrollments if e.team_id}
-    my_project = my_enrollments[0].project_id if my_enrollments else None
-    my_projects = {e.project_id for e in my_enrollments}
     query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True), User.id != user.id)
-    query = query.join(Enrollment, Enrollment.user_id == User.id).where(Enrollment.project_id.in_(my_projects)).distinct()
+    if get_raw(db, "public_feedback_profiles") != "true":
+        team_ids = _team_ids(db, user.id)
+        query = query.join(Enrollment, Enrollment.user_id == User.id).where(Enrollment.team_id.in_(team_ids)).distinct()
     if q.strip():
         like = f"%{q.strip().lower()}%"
         query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
-    rows = []
-    for u in db.scalars(query.order_by(User.full_name).limit(200)):
-        enr = db.scalar(select(Enrollment).where(Enrollment.user_id == u.id))
-        rows.append((u, enr, bool(enr and enr.team_id in my_teams)))
-    rows.sort(key=lambda r: not r[2])
     out = []
-    for u, enr, mate in rows[:20]:
-        m = _open_milestone_of(db, u.id, my_project, my_projects)
+    teammates_first = select(Enrollment.user_id).where(Enrollment.team_id.in_(_team_ids(db, user.id)))
+    for u in db.scalars(query.order_by(User.id.in_(teammates_first).desc(), User.full_name).limit(20)):
+        shared = _shared_team_projects(db, user.id, u.id)
+        m = _open_milestone_of(db, u.id, allowed_projects=shared) if shared else None
+        enrollments = select(Enrollment).join(Project, Project.id == Enrollment.project_id).where(
+            Enrollment.user_id == u.id, Project.is_active.is_(True))
+        if shared:
+            enrollments = enrollments.where(Enrollment.project_id.in_(shared))
+        enr = db.scalar(enrollments.order_by(Enrollment.project_id))
         out.append({
-            "id": u.id,
-            "full_name": u.full_name,
-            "student_number": u.student_number,
+            "id": u.id, "full_name": u.full_name, "student_number": u.student_number,
             "team": enr.team.team_name if enr and enr.team else None,
             "project": db.get(Project, enr.project_id).title if enr else None,
-            "is_teammate": mate,
-            "status": _evaluation_status(db, user, u.id, m, cfg.require_self_before_peer),
+            "is_teammate": bool(shared),
+            "status": _evaluation_status(db, user, u.id, m, cfg.require_self_before_peer) if shared else "view_only",
         })
-    return out
+    out.sort(key=lambda r: not r["is_teammate"])
+    return out[:20]
 
 
 @router.post("/peer-check")
@@ -372,19 +412,15 @@ def submit_peer_evaluation(
     target = db.get(User, body.target_id)
     if not target or target.role != Role.STUDENT.value or not target.is_active:
         raise HTTPException(404, "Student not found")
-    # Any student on the platform can be evaluated, within that student's open evaluation period.
-    preferred = db.get(Milestone, body.milestone_id) if body.milestone_id else None
-    my_projects = set(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == user.id)))
-    target_projects = set(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == target.id)))
-    shared_projects = my_projects & target_projects
-    if not shared_projects or (preferred and preferred.project_id not in shared_projects):
-        raise HTTPException(403, "You may only evaluate students in a course assigned to you")
-    if preferred and enrollment_of(db, target.id, preferred.project_id):
-        m = preferred
-    else:
-        m = _open_milestone_of(db, target.id, preferred.project_id if preferred else None, shared_projects)
-        if m is None:
-            raise HTTPException(409, "No evaluation period is open for this student right now")
+    shared_projects = _shared_team_projects(db, user.id, target.id)
+    if not shared_projects:
+        raise HTTPException(403, "You may only evaluate students in your own team")
+    preferred = get_or_404(db, Milestone, body.milestone_id, "Milestone") if body.milestone_id else None
+    if preferred and preferred.project_id not in shared_projects:
+        raise HTTPException(403, "You may only evaluate students in your own team")
+    m = preferred or _open_milestone_of(db, target.id, allowed_projects=shared_projects)
+    if m is None:
+        raise HTTPException(409, "No evaluation period is open for this student right now")
     _require_open(m)
     lock_student_milestone(db, body.target_id, m.id)
     cfg = scoring(db)
@@ -482,8 +518,6 @@ def student_directory(q: str = "", user: User = Depends(student_only), db: Sessi
     """Search students on the platform by name or university ID."""
     _require_public_profiles(db)
     query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True))
-    team_ids = _team_ids(db, user.id)
-    query = query.join(Enrollment, Enrollment.user_id == User.id).where(Enrollment.team_id.in_(team_ids)).distinct()
     if q.strip():
         like = f"%{q.strip().lower()}%"
         query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
@@ -554,15 +588,11 @@ def student_profile_feedback(student_id: str, user: User = Depends(student_only)
     """Another student's anonymous peer feedback and instructor comments, all milestones together."""
     _require_public_profiles(db)
     shared_teams = _team_ids(db, user.id) & _team_ids(db, student_id)
-    if student_id != user.id and not shared_teams:
-        raise HTTPException(403, "Feedback profiles are restricted to your assigned teammates")
     target = get_or_404(db, User, student_id, "Student")
     if target.role != Role.STUDENT.value or not target.is_active:
         raise HTTPException(404, "Student not found")
     enrollments = select(Enrollment).join(Project, Project.id == Enrollment.project_id).where(
         Enrollment.user_id == target.id, Project.is_active.is_(True))
-    if student_id != user.id:
-        enrollments = enrollments.where(Enrollment.team_id.in_(shared_teams))
     authorized_enrollments = list(db.scalars(enrollments.order_by(Enrollment.project_id)))
     enr = authorized_enrollments[0] if authorized_enrollments else None
     info = {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": enr.team.team_name if enr and enr.team else None}
@@ -571,7 +601,16 @@ def student_profile_feedback(student_id: str, user: User = Depends(student_only)
     milestones = [m for enrollment in authorized_enrollments for m in db.get(Project, enrollment.project_id).milestones]
     audit.log(db, user, "feedback.profile_viewed", "user", target.id)
     db.commit()
-    return {"student": info, "feedback": _all_feedback(db, target.id, milestones)}
+    summary = _all_feedback(db, target.id, milestones)
+    if student_id != user.id:
+        # Public profiles contain only released aggregate scores. Written feedback and
+        # instructor notes remain limited to the courses where both students share a team.
+        private_milestones = [m for enrollment in authorized_enrollments if enrollment.team_id in shared_teams
+                              for m in db.get(Project, enrollment.project_id).milestones]
+        private = _all_feedback(db, target.id, private_milestones)
+        summary["comments"] = private["comments"]
+        summary["instructor_comments"] = private["instructor_comments"]
+    return {"student": info, "feedback": summary}
 
 
 # ------------------------------------------------------------- UC-06 --

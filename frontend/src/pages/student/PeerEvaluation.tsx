@@ -1,5 +1,6 @@
 import { CheckCircle2, Search, ShieldAlert, ShieldCheck, Users, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
@@ -21,11 +22,12 @@ interface Target {
   team: string | null;
   project: string | null;
   is_teammate: boolean;
-  status: "available" | "evaluated" | "waiting_self" | "closed";
+  status: "available" | "evaluated" | "waiting_self" | "closed" | "view_only";
 }
 
 const STATUS_LABEL: Record<Target["status"], string> = {
   available: "",
+  view_only: "View summary only",
   evaluated: "Evaluated",
   waiting_self: "Self-assessment pending",
   closed: "No open evaluation period",
@@ -37,6 +39,7 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<Target[]>([]);
   const box = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -100,9 +103,10 @@ function TargetPicker({ value, onPick, version }: { value: Target | null; onPick
               <button
                 key={r.id}
                 type="button"
-                disabled={!ok}
+                disabled={!ok && r.status !== "view_only"}
                 className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-start hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
+                  if (r.status === "view_only") { navigate(`/student/feedback?student=${r.id}`); return; }
                   onPick(r);
                   setOpen(false);
                   setQ("");
@@ -196,8 +200,9 @@ export default function PeerEvaluation() {
 
   return (
     <div>
-      <PageHeader title={t("Give Feedback")} subtitle={t("Evaluate any student on the platform. Your identity stays anonymous and your feedback is confidential.")} />
+      <PageHeader title={t("Give Feedback")} subtitle={t("Evaluate only your own teammates. Search other students to view their published feedback summary; you cannot evaluate them.")} />
 
+      {!data?.peers.length && <div className="mb-5"><Alert>{t("You can explore student summaries now. Join a team when you want to give peer feedback.")} <Link className="underline" to="/student/artifacts">{t("Join a team")}</Link></Alert></div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <form onSubmit={submit} className="card p-6">
           {msg && (
@@ -239,7 +244,7 @@ export default function PeerEvaluation() {
           <div className="mt-6 flex items-center justify-end gap-2">
             {!target && <span className="me-auto text-xs text-slate-400">{t("Select a student to evaluate.")}</span>}
             <button type="button" className="btn-ghost" onClick={reset}>{t("Cancel")}</button>
-            <button className="btn-primary" disabled={busy || !target}>{t("Submit Evaluation")}</button>
+            <button className="btn-primary" disabled={busy || !target || !target.is_teammate || target.status !== "available"}>{t("Submit Evaluation")}</button>
           </div>
         </form>
 

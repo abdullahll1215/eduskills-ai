@@ -60,20 +60,20 @@ export function MilestoneTabs({ milestones, value, onChange, badge }: { mileston
 export function RatingSlider({ label, description, value, onChange, disabled, rubric }: { label: string; description?: string; value: number; onChange: (v: number) => void; disabled?: boolean; rubric?: Record<string, string> }) {
   const t = useT();
   return (
-    <div className="py-3">
-      <div className="grid items-center gap-3 sm:grid-cols-[180px_1fr]">
+    <div className="skill-rating">
+      <div className="skill-rating-grid">
         <div>
-          <div className="text-sm font-medium text-slate-800">{label}</div>
-          {description && <div className="text-xs text-slate-400">{description}</div>}
+          <div className="skill-rating-label">{label}</div>
+          {description && <div className="mt-1 text-xs text-slate-500">{description}</div>}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-400">{t("Poor")}</span>
-          <input type="range" min={1} max={5} step={1} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} className="h-2 flex-1 cursor-pointer" aria-label={label} />
-          <span className="text-xs text-slate-400">{t("Excellent")}</span>
-          <span className="w-8 rounded-md bg-brand-50 py-0.5 text-center text-sm font-bold text-brand-700">{value}</span>
+        <div className="skill-rating-scale">
+          <span className="skill-rating-end">{t("Poor")}</span>
+          <input type="range" min={1} max={5} step={1} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} className="skill-range" aria-label={label} aria-valuetext={`${value} / 5`} />
+          <span className="skill-rating-end">{t("Excellent")}</span>
+          <span className="skill-rating-value" dir="ltr">{value}<small>/5</small></span>
         </div>
       </div>
-      {rubric?.[String(value)] && <div className="mt-1 text-xs text-slate-500 sm:ms-[192px]">{rubric[String(value)]}</div>}
+      {rubric?.[String(value)] && <div className="skill-rating-rubric">{t(rubric[String(value)])}</div>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Activity, BookOpen, CheckCircle2, ExternalLink, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Report } from "../../api/types";
 import { Alert, Empty, LevelBadge, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
@@ -16,7 +17,7 @@ export default function GrowthReport() {
 
   if (l1 || loading) return <Loading />;
   if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone) return <Alert>{t("No evaluation period is available yet.")}</Alert>;
+  if (!milestone) return <div className="space-y-4"><PageHeader title={t("AI Growth Report")} /><Alert>{t("A 360° report needs course assessments from you, your teammates and your instructor. You can start your personal self-assessment now.")}</Alert><Link className="btn-primary" to="/student/self-assessment">{t("Personal self-assessment")}</Link></div>;
 
   const focus = report?.metrics.slice().sort((a, b) => b.gap - a.gap)[0];
   const c = report?.content;

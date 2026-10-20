@@ -166,6 +166,8 @@ const server: Record<string, string> = {
   "Please enter your full name": "يرجى إدخال اسمك الكامل",
   "Precondition failed: the student has not submitted the self-assessment (UC-01)": "لا يمكن المتابعة: الطالب لم يرسل تقييمه الذاتي بعد",
   "Project name is required": "اسم المشروع مطلوب",
+  "The course number must be 4 to 10 digits": "رقم المادة لازم يكون من 4 إلى 10 أرقام",
+  "Another course already uses this course number": "فيه مقرر ثاني يستخدم رقم المادة هذا",
   "No team has this invite code": "لا يوجد تيم بهذا الكود",
   "No course has this code. Ask your instructor for the course code.": "لا يوجد مقرر بهذا الكود. اطلب كود المقرر من المعلم.",
   "A team with this name already exists in this course": "يوجد تيم بهذا الاسم في المقرر",

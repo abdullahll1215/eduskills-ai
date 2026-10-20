@@ -1,5 +1,6 @@
 import { ArrowLeft, GraduationCap, Lock, MessageSquareQuote, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { Alert, Empty, Loading, PageHeader, fmt, fmtDate, useFetch } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -171,21 +172,22 @@ function OtherStudent({ id, onBack }: { id: string; onBack: () => void }) {
 
 export default function Feedback() {
   const t = useT();
-  const [viewing, setViewing] = useState<DirectoryEntry | null>(null);
+  const [params, setParams] = useSearchParams();
+  const viewing = params.get("student");
   const { data, loading, error } = useFetch(() => api<FeedbackData | null>("/api/student/feedback/all"));
 
   return (
     <div>
-      <PageHeader title={t("360° Feedback")} subtitle={t("Anonymous peer feedback and instructor comments. Search any student to view their feedback.")} />
-      <StudentSearch onPick={(s) => setViewing(s.is_me ? null : s)} />
+      <PageHeader title={t("360° Feedback")} subtitle={t("Your feedback stays anonymous. Search other students to see released score summaries. Only teammates can give peer evaluations.")} />
+      <StudentSearch onPick={(s) => setParams(s.is_me ? {} : { student: s.id })} />
       {viewing ? (
-        <OtherStudent key={viewing.id} id={viewing.id} onBack={() => setViewing(null)} />
+        <OtherStudent key={viewing} id={viewing} onBack={() => setParams({})} />
       ) : loading && !data ? (
         <Loading />
       ) : error ? (
         <Alert kind="error">{error}</Alert>
       ) : !data ? (
-        <Empty title={t("You are not enrolled in a project yet")}>{t("Ask your instructor to add you to a project team.")}</Empty>
+        <Empty title={t("No feedback yet")}>{t("Search students above to explore published summaries. Join a team when you want to exchange peer feedback.")}</Empty>
       ) : (
         <FeedbackView data={data} />
       )}

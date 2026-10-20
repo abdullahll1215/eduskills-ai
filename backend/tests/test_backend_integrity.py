@@ -59,6 +59,13 @@ def active_report(factory):
 def test_fourth_peer_refreshes_existing_report(isolated):
     client, factory = isolated
     target, mid, email = active_report(factory)
+    # A fourth reviewer must now be a member of the same team as the target.
+    with factory() as db:
+        target_enrollment = db.scalar(select(Enrollment).where(Enrollment.user_id == target))
+        reviewer_user = db.scalar(select(User).where(User.email == "khalid@student.kfu.edu.sa"))
+        reviewer_enrollment = db.scalar(select(Enrollment).where(Enrollment.user_id == reviewer_user.id))
+        reviewer_enrollment.team_id = target_enrollment.team_id
+        db.commit()
     reviewer = login(client, "khalid@student.kfu.edu.sa")
     comps = client.get("/api/competencies", headers=reviewer).json()
     response = client.post("/api/student/peer-evaluations", headers=reviewer, json={
@@ -153,7 +160,7 @@ def test_registration_cannot_self_assign_academic_membership(isolated):
     assert response.status_code == 403
 
 
-def test_unenrolled_registration_cannot_read_or_submit_academic_feedback(isolated):
+def test_unenrolled_student_can_read_only_released_summary_but_cannot_evaluate(isolated):
     client, factory = isolated
     admin = login(client, "admin@kfu.edu.sa")
     client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "true"}})
@@ -162,8 +169,12 @@ def test_unenrolled_registration_cannot_read_or_submit_academic_feedback(isolate
     assert registered.status_code == 201
     headers = {"Authorization": "Bearer " + registered.json()["access_token"]}
     target, mid, _ = active_report(factory)
-    assert client.get(f"/api/student/profiles/{target}/feedback", headers=headers).status_code == 403
-    assert client.get("/api/student/directory", headers=headers).json() == []
+    profile = client.get(f"/api/student/profiles/{target}/feedback", headers=headers)
+    assert profile.status_code == 200
+    assert profile.json()["feedback"]["skills"]
+    assert profile.json()["feedback"]["comments"] == []
+    assert profile.json()["feedback"]["instructor_comments"] == []
+    assert client.get("/api/student/directory", headers=headers).json()
     comps = client.get("/api/competencies", headers=headers).json()
     response = client.post("/api/student/peer-evaluations", headers=headers, json={
         "target_id": target, "milestone_id": mid, "ratings": {c["id"]: 4 for c in comps},
@@ -171,9 +182,9 @@ def test_unenrolled_registration_cannot_read_or_submit_academic_feedback(isolate
     assert response.status_code == 403
 
 
-def test_feedback_profiles_are_private_by_default():
+def test_released_score_profiles_are_enabled_by_default():
     from app.services.settings_store import DEFAULTS
-    assert DEFAULTS["public_feedback_profiles"] == "false"
+    assert DEFAULTS["public_feedback_profiles"] == "true"
 
 
 def test_provisional_dashboard_hides_below_threshold_peer_scores(isolated):
@@ -250,3 +261,48 @@ def test_postgres_backup_claims_no_restore_verification_without_a_restore(isolat
     exported = json.loads((tmp_path / record.filename).read_text())
     assert set(exported["tables"]) == {t.name for t in Base.metadata.tables.values()}
     assert exported["restore_verified"] is False
+
+
+def test_personal_self_assessment_needs_no_course_and_is_private(isolated):
+    client, _ = isolated
+    registered = client.post("/api/auth/register", json={"full_name": "Independent Student",
+        "email": "independent@example.com", "password": "Password123!"})
+    headers = {"Authorization": "Bearer " + registered.json()["access_token"]}
+    assert client.get("/api/student/projects", headers=headers).json() == []
+    initial = client.get("/api/student/personal-self-assessment", headers=headers)
+    assert initial.status_code == 200
+    assert initial.json()["submission"] is None
+    ratings = {c["id"]: 4 for c in initial.json()["competencies"]}
+    assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": ratings}).status_code == 201
+    assert client.get("/api/student/personal-self-assessment", headers=headers).json()["submission"]["ratings"] == ratings
+    assert client.get("/api/student/personal-self-assessment", headers=login(client, "ali@student.kfu.edu.sa")).json()["submission"] is None
+    changed = {c: 2 for c in ratings}
+    assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": changed}).status_code == 201
+    assert client.get("/api/student/personal-self-assessment", headers=headers).json()["submission"]["ratings"] == changed
+    assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": {}}).status_code == 422
+    assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": {c: 6 for c in ratings}}).status_code == 422
+    # A failed optional join never removes access to personal assessment.
+    # A malformed course number is refused (an unknown well-formed number would start a new course)
+    assert client.post("/api/student/team/create", headers=headers, json={"course_code": "WRONG123", "team_name": "My team"}).status_code == 422
+    assert client.get("/api/student/personal-self-assessment", headers=headers).status_code == 200
+    assert client.get("/api/student/reports", headers=headers).json() == []
+
+
+def test_peer_evaluation_requires_same_team_even_in_same_course(isolated):
+    client, factory = isolated
+    headers = login(client, "omar@student.kfu.edu.sa")
+    client.put("/api/admin/settings", headers=login(client, "admin@kfu.edu.sa"), json={"values": {"public_feedback_profiles": "true"}})
+    with factory() as db:
+        me = db.scalar(select(User).where(User.email == "omar@student.kfu.edu.sa"))
+        mine = db.scalar(select(Enrollment).where(Enrollment.user_id == me.id))
+        other = db.scalar(select(Enrollment).where(Enrollment.project_id == mine.project_id, Enrollment.team_id != mine.team_id))
+        target_id = other.user_id
+        mid = db.scalar(select(Milestone.id).where(Milestone.project_id == mine.project_id, Milestone.status == "active"))
+    targets = client.get("/api/student/evaluation-targets", headers=headers, params={"q": ""}).json()
+    row = next(t for t in targets if t["id"] == target_id)
+    assert row["status"] == "view_only" and not row["is_teammate"]
+    ratings = {c["id"]: 4 for c in client.get("/api/competencies", headers=headers).json()}
+    for period in (None, mid, "missing-milestone"):
+        response = client.post("/api/student/peer-evaluations", headers=headers,
+            json={"target_id": target_id, "milestone_id": period, "ratings": ratings})
+        assert response.status_code == 403

@@ -121,7 +121,7 @@ class Team(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     team_name: Mapped[str] = mapped_column(String(120))
     # Shared by a team member so classmates can join the team.
-    invite_code: Mapped[str | None] = mapped_column(String(12), unique=True, nullable=True)
+    invite_code: Mapped[str | None] = mapped_column(String(60), unique=True, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="teams")
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="team")
@@ -150,6 +150,15 @@ class Competency(Base):
     # Rubric descriptors for the 1-5 Likert scale: {"1": "...", ..., "5": "..."}
     rubric: Mapped[dict] = mapped_column(JSON, default=dict)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PersonalSelfAssessment(Base):
+    """Private practice ratings, independent of course enrollment and formal 360 reports."""
+    __tablename__ = "personal_self_assessments"
+
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    ratings: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Evaluation(Base):

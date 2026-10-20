@@ -7,6 +7,7 @@ import { Alert, Empty, Loading, Modal, PageHeader, askConfirm, fmtDate, useFetch
 import { useAuth } from "../../context/AuthContext";
 import { useT } from "../../i18n";
 import { fill } from "./shared";
+import TeamSection from "./TeamSetup";
 
 interface ArtifactRow {
   id: string;
@@ -583,6 +584,10 @@ export default function MyProjects() {
           )
         }
       />
+
+      <div className="mb-8">
+        <TeamSection />
+      </div>
 
       {projects.length === 0 ? (
         <div className="card mx-auto max-w-xl p-6">

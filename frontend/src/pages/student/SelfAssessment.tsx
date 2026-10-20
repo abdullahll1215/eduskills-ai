@@ -7,7 +7,7 @@ import { useT } from "../../i18n";
 import { RatingSlider, useStudentMilestone } from "./shared";
 
 interface SelfData {
-  milestone: Milestone;
+  milestone: Milestone | null;
   competencies: Competency[];
   submission: { ratings: Record<string, number>; evidence: string; evidence_link: string | null; created_at: string; is_locked: boolean } | null;
 }
@@ -15,9 +15,29 @@ interface SelfData {
 export default function SelfAssessment() {
   const t = useT();
   const { milestone, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
+  const [personalMode, setPersonalMode] = useState(false);
+  const personal = personalMode || !milestone;
+  if (l1) return <Loading />;
+  if (e1) return <Alert kind="error">{e1}</Alert>;
+  return <div>
+    <PageHeader title={t("Self-Assessment")} subtitle={t("Rate your own soft skills on a 1–5 Likert scale.")} />
+    {milestone && <div className="mb-4">
+      <label className="label" htmlFor="assessment-context">{t("Assessment context")}</label>
+      <select id="assessment-context" className="input max-w-md" value={personal ? "personal" : "course"} onChange={(e) => setPersonalMode(e.target.value === "personal")}>
+        <option value="course">{t("Course assessment")} · {milestone.name}</option>
+        <option value="personal">{t("Personal self-assessment")}</option>
+      </select>
+    </div>}
+    <AssessmentForm key={personal ? "personal" : milestone!.id} personal={personal} milestone={milestone} reloadProjects={reloadProjects} />
+  </div>;
+}
+
+function AssessmentForm({ personal, milestone, reloadProjects }: { personal: boolean; milestone: Milestone | null; reloadProjects: () => void }) {
+  const t = useT();
+  const endpoint = personal ? "/api/student/personal-self-assessment" : "/api/student/self-assessment";
   const { data, loading, error, reload } = useFetch(
-    () => (milestone ? api<SelfData>("/api/student/self-assessment", { params: { milestone_id: milestone.id } }) : Promise.resolve(null)),
-    [milestone?.id],
+    () => api<SelfData>(endpoint, personal ? undefined : { params: { milestone_id: milestone!.id } }),
+    [milestone?.id, personal],
   );
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
@@ -36,12 +56,12 @@ export default function SelfAssessment() {
   };
   useEffect(load, [data]);
 
-  if (l1 || (loading && !data)) return <Loading />;
-  if (e1 || error) return <Alert kind="error">{e1 || error}</Alert>;
-  if (!milestone || !data) return <Alert>{t("No evaluation period is available yet.")}</Alert>;
+  if (loading && !data) return <Loading />;
+  if (error) return <Alert kind="error">{error}</Alert>;
+  if (!data) return <Alert>{t("No evaluation period is available yet.")}</Alert>;
 
   const saved = !!data.submission;
-  const closed = milestone.status !== "active";
+  const closed = !personal && milestone?.status !== "active";
   const missing = data.competencies.filter((c) => !touched.has(c.id));
 
   const submit = async (e: FormEvent) => {
@@ -52,7 +72,7 @@ export default function SelfAssessment() {
     }
     setBusy(true);
     try {
-      await api("/api/student/self-assessment", { body: { milestone_id: milestone.id, ratings } });
+      await api(endpoint, { body: { ...(personal ? {} : { milestone_id: milestone!.id }), ratings } });
       setMsg({ kind: "success", text: t("Self-assessment saved.") });
       setEditing(false);
       reload();
@@ -66,9 +86,8 @@ export default function SelfAssessment() {
 
   return (
     <div>
-      <PageHeader title={t("Self-Assessment")} subtitle={t("Rate your own soft skills on a 1–5 Likert scale.")} />
-
       <div className="space-y-4">
+        {personal && <Alert title={t("Personal self-assessment")}>{t("Assess your own skills privately, without a course or team. Personal ratings are separate from your course assessment.")}</Alert>}
         {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         {saved && (
           <Alert kind="info">
@@ -77,7 +96,7 @@ export default function SelfAssessment() {
         )}
         {closed && <Alert kind="warning" title={t("Evaluation Period Closed")}>{t("The self-assessment is not accepting submissions right now. It opens again when your instructor starts the next evaluation period.")}</Alert>}
 
-        <form onSubmit={submit} className="card p-6">
+        <form onSubmit={submit} className="card assessment-sheet p-5 sm:p-7">
           <h2 className="font-semibold text-slate-900">{t("5-Skill Rubric")}</h2>
           <p className="text-sm text-slate-500">{t("Move each slider; the descriptor below explains what each level means.")}</p>
           <div className="mt-2 divide-y divide-slate-100">
@@ -97,7 +116,7 @@ export default function SelfAssessment() {
             ))}
           </div>
           {!closed && (
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="assessment-actions mt-6 flex justify-end gap-2">
               {saved &&
                 (editing ? (
                   <button type="button" className="btn-outline" onClick={load}><X className="h-4 w-4" /> {t("Cancel")}</button>

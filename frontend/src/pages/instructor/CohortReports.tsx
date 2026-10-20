@@ -22,7 +22,7 @@ interface CohortData {
   teams: { team: string; members: number; avg_external: number | null; critical: number; moderate: number }[];
 }
 
-const SKILL_COLORS = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444"];
+const SKILL_COLORS = ["#7c3aed", "#a37944", "#10b981", "#f59e0b", "#ef4444"];
 
 export default function CohortReports() {
   const t = useT();
@@ -108,7 +108,7 @@ export default function CohortReports() {
                     <YAxis domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} />
                     <Tooltip />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="Self" name={t("Self")} fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Self" name={t("Self")} fill="#6b5297" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="External" name={t("External")} fill="#94a3b8" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

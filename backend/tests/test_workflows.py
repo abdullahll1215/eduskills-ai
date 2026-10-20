@@ -267,21 +267,18 @@ def test_work_projects(client):
     assert len(client.get("/api/student/work-projects", headers=h).json()) == 1
 
 
-def test_evaluate_any_student_on_platform(client):
+def test_students_outside_team_are_view_only(client):
     h = login(client, "omar@student.kfu.edu.sa")
     targets = client.get("/api/student/evaluation-targets", headers=h).json()
     me = client.get("/api/auth/me", headers=h).json()
     assert targets and all(t["id"] != me["id"] for t in targets)
     mates = [t for t in targets if t["is_teammate"]]
-    assert mates and targets[: len(mates)] == mates  # teammates first
-    other = next(t for t in targets if not t["is_teammate"] and t["status"] == "available")
-    ratings = _ratings(client, h, 4)
-    body = {"target_id": other["id"], "ratings": ratings, "comment": "Very clear presenter in the joint review session and always shares useful resources."}
-    r = client.post("/api/student/peer-evaluations", headers=h, json=body)
-    assert r.status_code == 201, r.text
-    assert client.post("/api/student/peer-evaluations", headers=h, json=body).status_code == 409
-    again = client.get("/api/student/evaluation-targets", headers=h, params={"q": other["full_name"]}).json()
-    assert again[0]["status"] == "evaluated"
+    assert mates and targets[:len(mates)] == mates
+    other = next(t for t in targets if not t["is_teammate"])
+    assert other["status"] == "view_only"
+    r = client.post("/api/student/peer-evaluations", headers=h,
+        json={"target_id": other["id"], "ratings": _ratings(client, h, 4)})
+    assert r.status_code == 403
 
 
 def test_report_in_arabic(client, khalid):
@@ -326,7 +323,14 @@ def test_work_project_team_members(client):
 
 
 def test_peer_evaluation_without_comment(client):
-    h = login(client, "majed@student.kfu.edu.sa")
+    h = _new_student(client, "optional.comment@example.com")
+    staff = login(client, "ahmed@kfu.edu.sa")
+    pid = client.get("/api/instructor/projects", headers=staff).json()[0]["id"]
+    teams = client.get(f"/api/projects/{pid}", headers=staff).json()["teams"]
+    omar = login(client, "omar@student.kfu.edu.sa")
+    team_id = client.get("/api/student/team", headers=omar).json()[0]["team"]["id"]
+    code = next(t["invite_code"] for t in teams if t["id"] == team_id)
+    assert client.post("/api/student/team/join", headers=h, json={"code": code}).status_code == 200
     target = next(t for t in client.get("/api/student/evaluation-targets", headers=h).json() if t["status"] == "available")
     r = client.post("/api/student/peer-evaluations", headers=h, json={"target_id": target["id"], "ratings": _ratings(client, h, 4)})
     assert r.status_code == 201 and r.json()["flagged"] is False
@@ -342,7 +346,7 @@ def test_join_team_with_invite_code(client, instructor):
     project = client.get("/api/instructor/projects", headers=instructor).json()[0]
     detail = client.get(f"/api/projects/{project['id']}", headers=instructor).json()
     team = detail["teams"][0]
-    assert len(detail["join_code"]) == 8 and len(team["invite_code"]) == 8
+    assert detail["join_code"].isdigit() and team["invite_code"].startswith(detail["join_code"] + "-")
     h = _new_student(client, "joiner@student.kfu.edu.sa")
     assert client.get("/api/student/team", headers=h).json() == []
     assert client.post("/api/student/team/join", headers=h, json={"code": "WRONG123"}).status_code == 404
@@ -355,15 +359,16 @@ def test_join_team_with_invite_code(client, instructor):
     assert projects and any(m["status"] == "active" for m in projects[0]["milestones"])
 
 
-def test_create_team_needs_the_course_code(client, instructor):
+def test_create_team_in_an_existing_course(client, instructor):
     project = client.get("/api/instructor/projects", headers=instructor).json()[0]
-    code = client.get(f"/api/projects/{project['id']}", headers=instructor).json()["join_code"]
+    body = {"title": project["title"], "is_active": True, "course_number": "4242"}
+    assert client.put(f"/api/projects/{project['id']}", headers=instructor, json=body).status_code == 200
     h = _new_student(client, "founder@student.kfu.edu.sa")
-    assert client.post("/api/student/team/create", headers=h, json={"course_code": "NOPE1234", "team_name": "Gamma"}).status_code == 404
-    r = client.post("/api/student/team/create", headers=h, json={"course_code": code, "team_name": "Team Gamma"})
-    assert r.status_code == 201 and r.json()["team"]["team_name"] == "Team Gamma" and r.json()["team"]["invite_code"]
+    assert client.post("/api/student/team/create", headers=h, json={"course_code": "NOPE1234", "team_name": "Gamma"}).status_code == 422
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": "4242", "team_name": "Team Gamma"})
+    assert r.status_code == 201 and r.json()["project"]["id"] == project["id"] and r.json()["team"]["invite_code"] == "4242-TEAMGAMMA"
     other = _new_student(client, "copycat@student.kfu.edu.sa")
-    dup = client.post("/api/student/team/create", headers=other, json={"course_code": code, "team_name": "team gamma"})
+    dup = client.post("/api/student/team/create", headers=other, json={"course_code": "4242", "team_name": "team gamma"})
     assert dup.status_code == 409
 
 
@@ -374,3 +379,42 @@ def test_sign_in_portal_matches_the_role(client):
     assert client.post("/api/auth/login", json={**student, "portal": "staff"}).status_code == 403
     assert client.post("/api/auth/login", json={**staff, "portal": "staff"}).status_code == 200
     assert client.post("/api/auth/login", json={**student, "portal": "student"}).status_code == 200
+
+
+def test_team_code_is_course_number_and_team_name(client, instructor):
+    h = _new_student(client, "newcourse@student.kfu.edu.sa")
+    assert client.post("/api/student/team/create", headers=h, json={"course_code": "12ab", "team_name": "X"}).status_code == 422
+    # An unknown course number starts a new course
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": "7531", "team_name": "Team Nova"})
+    assert r.status_code == 201 and r.json()["team"]["invite_code"] == "7531-TEAMNOVA"
+    assert r.json()["project"]["title"] == "Course 7531"
+    projects = client.get("/api/student/projects", headers=h).json()
+    assert any(m["status"] == "active" for m in projects[0]["milestones"])
+    # A classmate joins with the readable code, typed loosely
+    mate = _new_student(client, "novamate@student.kfu.edu.sa")
+    r = client.post("/api/student/team/join", headers=mate, json={"code": "7531 teamnova"})
+    assert r.status_code == 200 and r.json()["team"]["team_name"] == "Team Nova"
+    # A second team in the same course reuses the course
+    third = _new_student(client, "novathird@student.kfu.edu.sa")
+    r = client.post("/api/student/team/create", headers=third, json={"course_code": "7531", "team_name": "Team Orion"})
+    assert r.json()["project"]["id"] == projects[0]["id"] and r.json()["team"]["invite_code"] == "7531-TEAMORION"
+    # The instructor can give an existing course its official number
+    pid = client.get("/api/instructor/projects", headers=instructor).json()[0]["id"]
+    body = {"title": "Graduation Project - IS 2026", "description": "x", "is_active": True, "course_number": "7531"}
+    assert client.put(f"/api/projects/{pid}", headers=instructor, json=body).status_code == 409  # taken
+    assert client.put(f"/api/projects/{pid}", headers=instructor, json={**body, "course_number": "4242"}).json()["join_code"] == "4242"
+
+
+def test_generated_codes_are_course_numbers(client, instructor):
+    """Courses and teams without a code get a numeric course number and a readable team code."""
+    r = client.post("/api/projects", headers=instructor, json={"title": "Untitled course", "description": "x", "is_active": True})
+    assert r.status_code in (200, 201)
+    number = r.json()["join_code"]
+    assert number.isdigit() and len(number) == 6
+    pid = r.json()["id"]
+    team = client.post(f"/api/projects/{pid}/teams", headers=instructor, json={"team_name": "Team Vega"}).json()
+    assert team["invite_code"] == f"{number}-TEAMVEGA"
+    seeded = client.get("/api/instructor/projects", headers=instructor).json()
+    for course in seeded:
+        for t in course.get("teams", []):
+            assert t["invite_code"].startswith(f"{course['join_code']}-") or not course["join_code"].isdigit()

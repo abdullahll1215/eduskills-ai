@@ -2,34 +2,57 @@
 import secrets
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, Team, User, WorkProject
 
-# No 0/O or 1/I, so codes read aloud or typed from a slide are not mistaken.
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-
-def new_code(db: Session, model, column) -> str:
-    """A random 8-character code that is unique in the given column."""
+def new_course_number(db: Session) -> str:
+    """A random 6-digit course number for a course created without one (the instructor can change it)."""
     while True:
-        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
-        if not db.scalar(select(model.id).where(column == code)):
-            return code
+        number = f"{secrets.randbelow(900000) + 100000}"
+        if not db.scalar(select(Project.id).where(Project.join_code == number)):
+            return number
 
 
 def ensure_codes(db: Session) -> None:
-    """Gives every course a join code and every team an invite code."""
+    """Gives every course a course number and every team a readable invite code (existing codes are kept)."""
     for p in db.scalars(select(Project).where(Project.join_code.is_(None))).all():
-        p.join_code = new_code(db, Project, Project.join_code)
+        p.join_code = new_course_number(db)
+        db.flush()
     for t in db.scalars(select(Team).where(Team.invite_code.is_(None))).all():
-        t.invite_code = new_code(db, Team, Team.invite_code)
+        t.invite_code = team_code(db, db.get(Project, t.project_id).join_code, t.team_name)
+        db.flush()
     db.commit()
 
 
 def normalise_code(code: str) -> str:
     return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+def course_number_of(raw: str) -> str:
+    """A course number is 4 to 10 digits (spaces and dashes are ignored)."""
+    number = "".join(ch for ch in raw if ch.isdigit())
+    if len(number) < 4 or len(number) > 10 or len(number) != len(normalise_code(raw)):
+        raise HTTPException(422, "The course number must be 4 to 10 digits")
+    return number
+
+
+def team_code(db: Session, course_number: str, team_name: str) -> str:
+    """Readable invite code: course number + team name, e.g. 1234-ALPHA (a suffix keeps it unique)."""
+    base = f"{course_number}-{normalise_code(team_name)[:40] or 'TEAM'}"
+    code, n = base, 2
+    while find_team_by_code(db, code):
+        code, n = f"{base}{n}", n + 1
+    return code
+
+
+def find_team_by_code(db: Session, code: str) -> Team | None:
+    """Codes match ignoring case, spaces and dashes."""
+    wanted = normalise_code(code)
+    if not wanted:
+        return None
+    return db.scalar(select(Team).where(func.upper(func.replace(Team.invite_code, "-", "")) == wanted))
 
 
 def default_work_project(db: Session, student_id: str, project_id: str) -> WorkProject:

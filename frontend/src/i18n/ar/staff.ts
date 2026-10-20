@@ -224,5 +224,10 @@ const dict: Record<string, string> = {
   "Students use it to create a team in this course.": "يستخدمه الطلاب لإنشاء تيم في هذا المقرر.",
   "Invite code": "كود الدعوة",
   "Copy": "نسخ",
+  "Course number": "رقم المادة",
+  "Course number (4 to 10 digits):": "رقم المادة (من 4 إلى 10 أرقام):",
+  "Course number saved.": "تم حفظ رقم المادة.",
+  "Students type it to create a team in this course.": "يكتبه الطلاب لإنشاء تيم في هذا المقرر.",
+  "Edit": "تعديل",
 };
 export default dict;
