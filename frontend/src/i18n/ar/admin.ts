@@ -51,13 +51,13 @@ const dict: Record<string, string> = {
 
   // Maintenance
   "Backup & Retention": "النسخ الاحتياطي والاحتفاظ بالبيانات",
-  "Disaster recovery: database backups with restore-integrity verification, and data-retention policy (GDPR-style compliance).": "التعافي من الكوارث: نسخ احتياطية لقاعدة البيانات مع التحقق من سلامة الاستعادة، وسياسة الاحتفاظ بالبيانات (امتثال على غرار اللائحة العامة لحماية البيانات GDPR).",
+  "Create database backups and manage data retention. Check verification details before relying on a backup.": "أنشئ نسخ قاعدة البيانات وأدر سياسة الاحتفاظ بها. راجع تفاصيل التحقق قبل الاعتماد على النسخة.",
   "Backup {file} created and verified ({details}).": "تم إنشاء النسخة الاحتياطية {file} والتحقق منها ({details}).",
   "Backup verification FAILED — emergency alert raised. {details}": "فشل التحقق من النسخة الاحتياطية — تم إطلاق تنبيه طارئ. {details}",
   "Run the data-retention purge? Chat history, notifications and audit logs older than the retention window will be permanently deleted.": "هل تريد تشغيل حذف البيانات وفق سياسة الاحتفاظ؟ سيُحذف نهائيًا سجل المحادثات والإشعارات وسجلات التدقيق الأقدم من فترة الاحتفاظ.",
   "Retention purge complete ({days} days). Deleted — {counts}.": "اكتمل الحذف وفق سياسة الاحتفاظ ({days} يومًا). المحذوف — {counts}.",
   "Database backup": "النسخ الاحتياطي لقاعدة البيانات",
-  "Creates a consistent copy, re-opens it to run an integrity check and stores a SHA-256 checksum.": "ينشئ نسخة متسقة، ثم يعيد فتحها لإجراء فحص السلامة، ويخزّن مجموع التحقق SHA-256.",
+  "Creates a consistent backup with a SHA-256 checksum. PostgreSQL exports require a separate restore test.": "ينشئ نسخة متسقة مع مجموع تحقق SHA-256. تتطلب صادرات PostgreSQL اختبار استعادة منفصلًا.",
   "Run backup now": "إنشاء نسخة احتياطية الآن",
   "Data retention purge": "حذف البيانات وفق سياسة الاحتفاظ",
   "Removes operational personal data (chat, notifications, audit logs) older than the configured retention window. Evaluation history is preserved for longitudinal tracking.": "يزيل البيانات الشخصية التشغيلية (المحادثات والإشعارات وسجلات التدقيق) الأقدم من فترة الاحتفاظ المحددة. يُحتفظ بسجل التقييمات لأغراض المتابعة الطولية.",
@@ -154,5 +154,7 @@ const dict: Record<string, string> = {
   "Level": "المستوى",
   "Mobile": "الجوال",
   "Department": "القسم",
+  "Data export created. Restore verification is still required. {details}": "تم إنشاء تصدير البيانات. لا يزال التحقق من الاستعادة مطلوبًا. {details}",
+  "Restore not verified": "لم يتم التحقق من الاستعادة",
 };
 export default dict;

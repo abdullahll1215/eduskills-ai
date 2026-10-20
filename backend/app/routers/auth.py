@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Competency, Enrollment, Notification, Project, Role, Team, User, utcnow
+from ..models import Competency, Enrollment, Notification, Role, User, utcnow
 from ..schemas import LoginIn, PasswordIn, ProfileIn, RegisterIn
 from ..security import create_access_token, hash_password, verify_password
 from ..services import audit

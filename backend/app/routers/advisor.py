@@ -9,15 +9,16 @@ from ..models import AIReport, Intervention, Milestone, User
 from ..schemas import InterventionUpdateIn
 from ..services import audit
 from ..services.common import get_or_404
+from ..services.report_state import is_current
 
 router = APIRouter(prefix="/api/advisor", tags=["advisor"])
 
 
 def _out(db: Session, i: Intervention) -> dict:
-    latest = db.scalar(
+    latest = next((r for r in db.scalars(
         select(AIReport).join(Milestone, AIReport.milestone_id == Milestone.id)
-        .where(AIReport.student_id == i.student_id).order_by(Milestone.number.desc())
-    )
+        .where(AIReport.student_id == i.student_id, AIReport.project_id == i.project_id).order_by(Milestone.number.desc())
+    ) if is_current(db, r)), None)
     return {
         "id": i.id,
         "student": {"id": i.student.id, "full_name": i.student.full_name, "email": i.student.email, "student_number": i.student.student_number},

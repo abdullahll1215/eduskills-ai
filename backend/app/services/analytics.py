@@ -62,6 +62,8 @@ class StudentSnapshot:
     peer_count: int
     has_instructor: bool
     min_peers: int
+    instructor_weight: float = 0.6
+    peer_weight: float = 0.4
     skills: list[SkillMetric] = field(default_factory=list)
     peer_comments: list[str] = field(default_factory=list)
     instructor_notes: str = ""
@@ -128,6 +130,8 @@ def snapshot(db: Session, student_id: str, milestone_id: str, cfg: ScoringConfig
         peer_count=len(peers),
         has_instructor=inst_ev is not None,
         min_peers=cfg.min_peer_evaluations,
+        instructor_weight=cfg.instructor_weight,
+        peer_weight=cfg.peer_weight,
         instructor_notes=decrypt(inst_ev.notes_enc) if inst_ev else "",
         self_evidence=(decrypt(self_ev.comment_enc) if self_ev else ""),
     )

@@ -19,8 +19,8 @@ longitudinal growth dashboards and a downloadable **Skills Passport**.
 cd backend
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env               # optional: add AI_API_KEY here
+pip install -r requirements.lock
+cp .env.example .env               # explicit development migration/demo settings
 uvicorn app.main:app --reload --port 8000
 ```
 On first start the database is created (SQLite in `backend/data/`) and filled with a demo cohort.
@@ -41,12 +41,10 @@ Open http://localhost:5173
 The repository is ready for Vercel (`vercel.json`, `api/index.py`, `requirements.txt`):
 the React app is served as static files and the FastAPI backend runs as a Python serverless function at `/api/*`.
 
-1. On vercel.com: **Add New → Project → Import** this GitHub repository → **Deploy** (no settings to change).
-2. In the project: **Storage → Create Database → Neon (Postgres)** and connect it to the project
-   (this sets `DATABASE_URL` automatically). Without it, data lives in a temporary SQLite file and resets.
-3. **Settings → Environment Variables**: add `AI_API_KEY` = your Google AI Studio key (Gemini for all users).
-   Optional: `SECRET_KEY`, `ANONYMIZATION_SALT` (otherwise derived privately from the database credentials).
-4. **Deployments → Redeploy**. Every later push to `main` deploys automatically.
+Deployment requires a persistent PostgreSQL connection, reviewed migrations and independent security secrets.
+Production fails closed when these are missing; it never silently creates temporary SQLite data.
+See [backend deployment and recovery](docs/backend-deployment.md) for Supabase's private schema,
+restricted database role, required settings, safe migrations and verification steps.
 
 ### الحسابات التجريبية (Demo accounts) — password: `Password123!`
 | Role | Email |
@@ -68,7 +66,7 @@ To enable GenAI narratives, either set `AI_API_KEY` in `backend/.env`, or log in
 
 ### الاختبارات (Tests)
 ```bash
-cd backend && pytest -q        # 26 tests: scoring model, NLP filter, and UC-01..UC-08 end-to-end
+cd backend && pytest -q        # regression, access-control, scoring and API tests
 ```
 
 ---
@@ -78,7 +76,7 @@ cd backend && pytest -q        # 26 tests: scoring model, NLP filter, and UC-01.
 | Proposal item | Implementation |
 |---|---|
 | **UC-01** Submit Self-Assessment (5-skill rubric, validation, timestamp, lock, 360° check) | `routers/student.py` → `submit_self_assessment`; UI `pages/student/SelfAssessment.tsx` |
-| **UC-02** Anonymous Peer Evaluation (same team, ≥3 peers, no self-review, salted SHA-256, AI toxicity filter, encryption) | `submit_peer_evaluation`, `security.reviewer_hash`, `services/nlp.content_filter`, `ai_engine.moderate`; UI `PeerEvaluation.tsx` |
+| **UC-02** Anonymous Peer Evaluation (assigned course, ≥3 peers, no self-review, salted SHA-256, AI toxicity filter, encryption) | `submit_peer_evaluation`, `security.reviewer_hash`, `services/nlp.content_filter`, `ai_engine.moderate`; UI `PeerEvaluation.tsx` |
 | **UC-03** Instructor Evaluation (preconditions, 60% weight, warning if gap > 2.0, lock, trigger analytics) | `routers/instructor.py` → `submit_instructor_evaluation`; UI `StudentReview.tsx` |
 | **UC-04** Blind-Spot Detection: `External = 0.6·Inst + 0.4·Peer`, `δ = |External − Self|`, ≤1.5 aligned / ≤2.0 moderate / >2.0 critical | `services/analytics.py` (stored in `delta_metrics`) |
 | **UC-05** AI Developmental Report (NLP pipeline, prompt engineering, GenAI API, resources DB, JSON report, notification, fallback template) | `services/ai_engine.py`, `services/nlp.py`; UI `GrowthReport.tsx` |

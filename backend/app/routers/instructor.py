@@ -386,10 +386,10 @@ def cohort_report(project_id: str, user: User = Depends(instructor_only), db: Se
         members = [e.user_id for e in t.enrollments]
         latest = []
         for uid in members:
-            r = db.scalar(
+            r = next((r for r in db.scalars(
                 select(AIReport).join(Milestone, AIReport.milestone_id == Milestone.id)
                 .where(AIReport.student_id == uid, AIReport.project_id == project.id).order_by(Milestone.number.desc())
-            )
+            ) if is_current(db, r)), None)
             if r:
                 latest.append(r)
         teams.append(

@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import Base, engine
-from app import models  # noqa: F401: registers the complete schema
+from app import models  # noqa: F401
 
 config = context.config
 schema = get_settings().database_schema or None

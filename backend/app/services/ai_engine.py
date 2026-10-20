@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, object_session
 
 from ..models import (
     AIReport,
-    BlindSpotLevel,
     DeltaMetric,
     Intervention,
     LearningResource,
@@ -84,7 +83,7 @@ def build_prompt(student_name: str, milestone: Milestone, snap: StudentSnapshot,
     return f"""Student first name: {first}
 Project milestone: M{milestone.number} - {milestone.name}
 
-Quantitative metrics per soft skill (1-5 Likert scale, external = 60% instructor + 40% peer average):
+Quantitative metrics per soft skill (1-5 Likert scale, external = {snap.instructor_weight:.0%} instructor + {snap.peer_weight:.0%} peer average):
 {chr(10).join(rows)}
 
 Overall: self={snap.overall_self}, external={snap.overall_external}
@@ -349,7 +348,7 @@ def _fallback_report_ar(student_name: str, snap: StudentSnapshot, themes: dict) 
     ext, slf = snap.overall_external or 0, snap.overall_self or 0
     paragraphs = [
         f"مرحبًا {first}، يجمع هذا التقرير بين تقييمك الذاتي والتقييمات المجهولة من {snap.peer_count} من زملائك وتقييم معلمك. "
-        f"متوسط تقييمك لنفسك {slf:.1f} من 5، بينما الدرجة الخارجية الموزونة (60% المعلم، 40% الزملاء) {ext:.1f} من 5."
+        f"متوسط تقييمك لنفسك {slf:.1f} من 5، بينما الدرجة الخارجية الموزونة ({snap.instructor_weight:.0%} المعلم، {snap.peer_weight:.0%} الزملاء) {ext:.1f} من 5."
     ]
     if worst and worst.gap is not None and worst.direction == "overestimate":
         paragraphs.append(
@@ -402,7 +401,7 @@ def fallback_report(student_name: str, snap: StudentSnapshot, themes: dict, lang
     paragraphs = [
         f"{first}, this report combines your self-assessment, the anonymous evaluations of {snap.peer_count} "
         f"teammates and your instructor's evaluation. Your overall self-rating is {slf:.1f}/5 while the weighted "
-        f"external score (60% instructor, 40% peers) is {ext:.1f}/5."
+        f"external score ({snap.instructor_weight:.0%} instructor, {snap.peer_weight:.0%} peers) is {ext:.1f}/5."
     ]
     if worst and worst.gap is not None and worst.direction == "overestimate":
         paragraphs.append(
@@ -737,12 +736,13 @@ def _rule_based_reply(db: Session, user: User, message: str) -> str:
         items = "\n".join(f"• {r['title']} ({r['provider']})" for r in res) or "-"
         return ("هذه مصادر مقترحة لك:\n" if arabic else "Here are resources matched to your gaps:\n") + items
     if any(k in low for k in ("how", "calculat", "formula", "delta", "كيف", "حساب", "المعادلة")):
+        cfg = scoring(db)
         return (
-            "الدرجة الخارجية = 60% تقييم المدرّس + 40% متوسط تقييم الزملاء. الفجوة Δ = |الخارجية − الذاتية|. "
-            "إذا Δ ≤ 1.5 فأنت متوافق، بين 1.5 و2.0 فجوة متوسطة، وأكثر من 2.0 نقطة عمياء حرجة."
+            f"الدرجة الخارجية = {cfg.instructor_weight:.0%} تقييم المدرّس + {cfg.peer_weight:.0%} متوسط تقييم الزملاء. الفجوة Δ = |الخارجية − الذاتية|. "
+            f"إذا Δ ≤ {cfg.moderate_threshold:g} فأنت متوافق، حتى {cfg.critical_threshold:g} فجوة متوسطة، وما فوقها فجوة حرجة؛ يحدد اتجاه الفرق إن كانت نقطة عمياء أو قوة خفية."
             if arabic
-            else "External score = 60% instructor + 40% peer average. Delta = |external − self|. "
-            "Delta ≤ 1.5 is aligned, 1.5–2.0 is a moderate gap and above 2.0 is a critical blind spot."
+            else f"External score = {cfg.instructor_weight:.0%} instructor + {cfg.peer_weight:.0%} peer average. Delta = |external − self|. "
+            f"Delta ≤ {cfg.moderate_threshold:g} is aligned, up to {cfg.critical_threshold:g} is moderate, and above that is critical. The direction distinguishes a blind spot from a hidden strength."
         )
     if any(k in low for k in ("strength", "good at", "best", "قوة", "أفضل")):
         return (

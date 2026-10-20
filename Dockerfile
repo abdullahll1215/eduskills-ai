@@ -9,8 +9,8 @@ RUN npm run build
 # Stage 2: FastAPI backend serving the API and the built frontend
 FROM python:3.12-slim
 WORKDIR /app
-COPY backend/requirements.txt backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY backend/requirements.lock backend/requirements.lock
+RUN pip install --no-cache-dir -r backend/requirements.lock
 COPY backend/ backend/
 COPY --from=web /app/frontend/dist frontend/dist
 WORKDIR /app/backend

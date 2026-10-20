@@ -25,7 +25,7 @@ from ..security import hash_password
 from ..services import ai_engine, audit, backup
 from ..services.common import competency_out, get_or_404, user_out
 from ..services.settings_store import DEFAULTS, ai_config, get_raw, public_settings, set_value
-from ..services.report_state import lock_student_milestone
+from ..services.report_state import lock_report_configuration, lock_student_milestone
 from .student import run_job, trigger_report
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -99,6 +99,7 @@ def get_settings_(_: User = Depends(admin_only), db: Session = Depends(get_db)):
 
 @router.put("/settings")
 def update_settings(body: SettingsIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    lock_report_configuration(db, exclusive=True)
     vals = body.values
     unknown = set(vals) - set(DEFAULTS)
     if unknown:
@@ -123,8 +124,12 @@ def update_settings(body: SettingsIn, admin: User = Depends(admin_only), db: Ses
     if vals.get("ai_base_url") and not vals["ai_base_url"].startswith(("https://", "http://")):
         raise HTTPException(422, "The API base URL must start with https:// - did you paste the API key in the wrong field?")
     for name, maximum in (("min_peer_evaluations", 100), ("retention_days", 3650)):
-        if name in vals and (not vals[name].isdigit() or not 1 <= int(vals[name]) <= maximum):
-            raise HTTPException(422, f"{name} must be a whole number between 1 and {maximum}")
+        if name in vals:
+            try:
+                if not vals[name].isascii() or not vals[name].isdigit() or not 1 <= int(vals[name]) <= maximum:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(422, f"{name} must be a whole number between 1 and {maximum}") from None
     for name in {"public_feedback_profiles", "ai_enabled", "require_self_before_peer"} & vals.keys():
         if vals[name] not in {"true", "false"}:
             raise HTTPException(422, f"{name} must be true or false")
@@ -159,6 +164,7 @@ def test_ai(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
 
 @router.put("/competencies/{competency_id}")
 def update_competency(competency_id: str, body: CompetencyIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    lock_report_configuration(db, exclusive=True)
     c = get_or_404(db, Competency, competency_id, "Competency")
     c.skill_name, c.description, c.rubric = body.skill_name, body.description, body.rubric
     audit.log(db, admin, "rubric.updated", "competency", c.id, c.code)
@@ -177,6 +183,7 @@ def list_resources(_: User = Depends(admin_only), db: Session = Depends(get_db))
 
 @router.post("/resources", status_code=201)
 def add_resource(body: ResourceIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    lock_report_configuration(db, exclusive=True)
     get_or_404(db, Competency, body.competency_id, "Competency")
     r = LearningResource(**body.model_dump())
     db.add(r)
@@ -187,6 +194,7 @@ def add_resource(body: ResourceIn, admin: User = Depends(admin_only), db: Sessio
 
 @router.delete("/resources/{resource_id}")
 def delete_resource(resource_id: str, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    lock_report_configuration(db, exclusive=True)
     r = get_or_404(db, LearningResource, resource_id, "Resource")
     db.delete(r)
     audit.log(db, admin, "resource.deleted", "learning_resource", resource_id)

@@ -11,18 +11,28 @@ from .analytics import snapshot
 from .settings_store import scoring
 
 FINGERPRINT_KEY = "_input_fingerprint"
+CONFIGURATION_LOCK = 68920261021
+
+
+def lock_report_configuration(db: Session, *, exclusive: bool = False) -> None:
+    """Global rubric/config changes cannot interleave with report computations."""
+    if db.get_bind().dialect.name == "postgresql":
+        function = "pg_advisory_xact_lock" if exclusive else "pg_advisory_xact_lock_shared"
+        db.execute(text(f"SELECT {function}(:key)"), {"key": CONFIGURATION_LOCK})
 
 
 def lock_student_milestone(db: Session, student_id: str, milestone_id: str) -> None:
     """Serialize writes for one report's inputs, across serverless instances."""
     if db.get_bind().dialect.name == "postgresql":
+        lock_report_configuration(db)
         key = int.from_bytes(hashlib.sha256(f"{student_id}:{milestone_id}".encode()).digest()[:8], signed=True)
         db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
 
 
 def input_fingerprint(db: Session, student_id: str, milestone_id: str) -> str:
     evaluations = db.scalars(select(Evaluation).options(selectinload(Evaluation.ratings)).where(
-        Evaluation.target_id == student_id, Evaluation.milestone_id == milestone_id).order_by(Evaluation.id))
+        Evaluation.target_id == student_id, Evaluation.milestone_id == milestone_id).order_by(Evaluation.id)
+        .execution_options(populate_existing=True))
     payload = {
         "version": 1,
         "scoring": asdict(scoring(db)),

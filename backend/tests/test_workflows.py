@@ -166,7 +166,12 @@ def test_uc08_admin_configuration_backup_and_audit(client, admin):
     r = client.post("/api/admin/ai/test", headers=admin)
     assert r.json()["mode"] == "fallback"  # E4a: no key -> local fallback configuration
     r = client.post("/api/admin/backups", headers=admin)
-    assert r.status_code == 201 and r.json()["verified"] is True
+    from app.database import engine
+    assert r.status_code == 201
+    if engine.dialect.name == "sqlite":
+        assert r.json()["verified"] is True
+    else:
+        assert r.json()["verified"] is False  # a data export is not a tested PostgreSQL restore
     r = client.post("/api/admin/retention/purge", headers=admin)
     assert r.status_code == 200
     logs = client.get("/api/admin/audit-logs", headers=admin).json()

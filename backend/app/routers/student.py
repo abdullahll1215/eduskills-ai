@@ -482,19 +482,25 @@ def my_feedback_all(user: User = Depends(student_only), db: Session = Depends(ge
 def student_profile_feedback(student_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Another student's anonymous peer feedback and instructor comments, all milestones together."""
     _require_public_profiles(db)
-    if student_id != user.id and not (_team_ids(db, user.id) & _team_ids(db, student_id)):
+    shared_teams = _team_ids(db, user.id) & _team_ids(db, student_id)
+    if student_id != user.id and not shared_teams:
         raise HTTPException(403, "Feedback profiles are restricted to your assigned teammates")
     target = get_or_404(db, User, student_id, "Student")
     if target.role != Role.STUDENT.value or not target.is_active:
         raise HTTPException(404, "Student not found")
-    enr = db.scalar(select(Enrollment).where(Enrollment.user_id == target.id))
+    enrollments = select(Enrollment).join(Project, Project.id == Enrollment.project_id).where(
+        Enrollment.user_id == target.id, Project.is_active.is_(True))
+    if student_id != user.id:
+        enrollments = enrollments.where(Enrollment.team_id.in_(shared_teams))
+    authorized_enrollments = list(db.scalars(enrollments.order_by(Enrollment.project_id)))
+    enr = authorized_enrollments[0] if authorized_enrollments else None
     info = {"id": target.id, "full_name": target.full_name, "student_number": target.student_number, "team": enr.team.team_name if enr and enr.team else None}
     if not enr:
         return {"student": info, "feedback": None}
-    project = db.get(Project, enr.project_id)
+    milestones = [m for enrollment in authorized_enrollments for m in db.get(Project, enrollment.project_id).milestones]
     audit.log(db, user, "feedback.profile_viewed", "user", target.id)
     db.commit()
-    return {"student": info, "feedback": _all_feedback(db, target.id, list(project.milestones))}
+    return {"student": info, "feedback": _all_feedback(db, target.id, milestones)}
 
 
 # ------------------------------------------------------------- UC-06 --

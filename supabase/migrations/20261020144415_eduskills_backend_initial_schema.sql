@@ -1,4 +1,4 @@
--- Generated from Alembic eduskills_0001; preserves the legacy public schema.
+-- Generated from Alembic eduskills_0001 + eduskills_0002. Preserves public.
 
 CREATE SCHEMA IF NOT EXISTS "eduskills";
 
@@ -322,6 +322,11 @@ CREATE INDEX ix_skill_ratings_evaluation_id ON eduskills.skill_ratings (evaluati
 
 INSERT INTO eduskills.alembic_version (version_num) VALUES ('eduskills_0001') RETURNING eduskills.alembic_version.version_num;
 
+-- Running upgrade eduskills_0001 -> eduskills_0002
+
+ALTER TABLE eduskills.artifacts ADD COLUMN stage INTEGER;
+
+UPDATE eduskills.alembic_version SET version_num='eduskills_0002' WHERE eduskills.alembic_version.version_num = 'eduskills_0001';
 
 
 -- Server-only schema. The browser uses FastAPI, never the Supabase Data API.

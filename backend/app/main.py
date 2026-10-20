@@ -17,6 +17,7 @@ from .database import SessionLocal, engine
 from .migration_runner import upgrade_database, verify_database_revision
 from .services.common import assign_orphan_artifacts
 from .services.locale import current_lang, lang_from_header
+from .services.report_state import lock_report_configuration
 from .routers import admin, advisor, auth, instructor, projects, student
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -35,6 +36,7 @@ def init_db():
     if settings.seed_demo_data:
         seed.run()
     with SessionLocal() as db:
+        lock_report_configuration(db, exclusive=True)
         seed.seed_reference(db)
         assign_orphan_artifacts(db)
 

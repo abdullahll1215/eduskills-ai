@@ -17,6 +17,9 @@ services:
     ports:
       - "8000:8000"
     environment:
+      ENVIRONMENT: development
+      AUTO_MIGRATE: "true"
+      SEED_DEMO_DATA: "true"
       DATABASE_URL: postgresql+psycopg2://eduskills:eduskills@db:5432/eduskills
       SECRET_KEY: ${SECRET_KEY:-please-change-this-secret}
       ANONYMIZATION_SALT: ${ANONYMIZATION_SALT:-please-change-this-salt}
