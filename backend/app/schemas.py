@@ -88,6 +88,11 @@ class WorkProjectIn(BaseModel):
     description: str | None = Field(None, max_length=5000)
     url: str | None = Field(None, max_length=500)
     stages: int = Field(1, ge=1, le=10)
+    member_ids: list[str] = Field(default_factory=list, max_length=30)
+
+
+class MembersIn(BaseModel):
+    student_ids: list[str] = Field(min_length=1, max_length=30)
 
 
 class ArtifactIn(BaseModel):

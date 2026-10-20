@@ -262,6 +262,18 @@ class WorkProject(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class WorkProjectMember(Base):
+    """A student added to someone's work project; members see the project and add files to it."""
+
+    __tablename__ = "work_project_members"
+    __table_args__ = (UniqueConstraint("work_project_id", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    work_project_id: Mapped[str] = mapped_column(ForeignKey("work_projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Artifact(Base):
     """Optional project evidence metadata (commit logs, submissions) used for behavioral indicators."""
 

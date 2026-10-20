@@ -1,9 +1,10 @@
-import { ArrowLeft, ChevronRight, ExternalLink, FilePlus2, FolderKanban, FolderPlus, GitCommitHorizontal, Trash2, Upload } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { ArrowLeft, ChevronRight, Crown, ExternalLink, FilePlus2, FolderKanban, FolderPlus, GitCommitHorizontal, LogOut, Search, Trash2, Upload, UserPlus, Users, X } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { StudentProject } from "../../api/types";
 import { Alert, Empty, Loading, Modal, PageHeader, askConfirm, fmtDate, useFetch } from "../../components/ui";
+import { useAuth } from "../../context/AuthContext";
 import { useT } from "../../i18n";
 import { fill } from "./shared";
 
@@ -16,6 +17,14 @@ interface ArtifactRow {
   url: string | null;
   metrics: Record<string, number | string | boolean | null>;
   created_at: string;
+  added_by?: string | null;
+  is_mine?: boolean;
+}
+
+interface Person {
+  id: string;
+  full_name: string;
+  student_number: string | null;
 }
 
 interface WorkProject {
@@ -27,6 +36,9 @@ interface WorkProject {
   created_at: string;
   updated_at: string;
   file_count: number;
+  is_owner: boolean;
+  owner: Person | null;
+  members: Person[];
   files?: ArtifactRow[];
 }
 
@@ -54,12 +66,133 @@ function useCurrentMilestoneId() {
   return (milestones.find((m) => m.status === "active") ?? milestones[milestones.length - 1])?.id ?? null;
 }
 
+/** Search students by name or university ID and collect them as removable chips. */
+function StudentPicker({ value, onChange, exclude = [] }: { value: Person[]; onChange: (v: Person[]) => void; exclude?: string[] }) {
+  const t = useT();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<Person[]>([]);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      api<Person[]>("/api/student/work-projects/candidates", { params: { q } }).then(setResults).catch(() => setResults([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const hidden = new Set([...exclude, ...value.map((p) => p.id)]);
+  const shown = results.filter((p) => !hidden.has(p.id));
+
+  return (
+    <div ref={box} className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-brand-50 py-1 pe-1.5 ps-3 text-xs font-medium text-brand-700">
+              {p.full_name}
+              <button type="button" onClick={() => onChange(value.filter((x) => x.id !== p.id))} className="rounded-full p-0.5 hover:bg-brand-100" aria-label={t("Remove {name}", { name: p.full_name })}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          className="input ps-9"
+          dir="auto"
+          value={q}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          placeholder={t("Search students by name or university ID...")}
+        />
+        {open && (
+          <div className="card absolute z-30 mt-1 max-h-56 w-full overflow-y-auto py-1">
+            {shown.length === 0 && <div className="px-4 py-3 text-sm text-slate-500">{t("No students found.")}</div>}
+            {shown.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-4 py-2 text-start hover:bg-slate-50"
+                onClick={() => {
+                  onChange([...value, p]);
+                  setQ("");
+                  setOpen(false);
+                }}
+              >
+                <span className="text-sm text-slate-800">{p.full_name}</span>
+                <span className="text-xs text-slate-400">{p.student_number}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddMemberForm({ projects, initialProjectId, onDone }: { projects: WorkProject[]; initialProjectId: string; onDone: (projectId: string) => void }) {
+  const t = useT();
+  const [projectId, setProjectId] = useState(initialProjectId || projects[0]?.id || "");
+  const [people, setPeople] = useState<Person[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const project = projects.find((p) => p.id === projectId);
+  const exclude = project ? [project.owner?.id ?? "", ...project.members.map((m) => m.id)] : [];
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!people.length) return setError(t("Choose at least one student."));
+    setBusy(true);
+    try {
+      await api(`/api/student/work-projects/${projectId}/members`, { body: { student_ids: people.map((p) => p.id) } });
+      onDone(projectId);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      {error && <Alert kind="error" onClose={() => setError(null)}>{error}</Alert>}
+      <div>
+        <label className="label">{t("Project")}</label>
+        <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setPeople([]); }}>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="label">{t("Students")}</label>
+        <StudentPicker value={people} onChange={setPeople} exclude={exclude} />
+      </div>
+      <button className="btn-primary w-full" disabled={busy || !projectId}><UserPlus className="h-4 w-4" /> {t("Add to project")}</button>
+    </form>
+  );
+}
+
 function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
   const t = useT();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
   const [stages, setStages] = useState(1);
+  const [team, setTeam] = useState<Person[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,7 +200,7 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
     e.preventDefault();
     setBusy(true);
     try {
-      onCreated(await api<WorkProject>("/api/student/work-projects", { body: { name, description, url: url.trim() || null, stages } }));
+      onCreated(await api<WorkProject>("/api/student/work-projects", { body: { name, description, url: url.trim() || null, stages, member_ids: team.map((p) => p.id) } }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -107,6 +240,11 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
             </button>
           ))}
         </div>
+      </div>
+      <div>
+        <label className="label">{t("Add team (optional)")}</label>
+        <p className="mb-2 text-xs text-slate-500">{t("Students you add will see this project and can add files to it.")}</p>
+        <StudentPicker value={team} onChange={setTeam} />
       </div>
       <button className="btn-primary w-full" disabled={busy}><FolderPlus className="h-4 w-4" /> {t("Add project")}</button>
     </form>
@@ -213,12 +351,15 @@ function FileCard({ a, onDelete }: { a: ArtifactRow; onDelete: () => void }) {
           <GitCommitHorizontal className="h-5 w-5 text-brand-600" />
           <div>
             <div className="font-semibold text-slate-800">{a.title}</div>
-            <div className="text-xs text-slate-400">{KIND_LABELS[a.kind] ? t(KIND_LABELS[a.kind]) : a.kind.replace("_", " ")} · {fmtDate(a.created_at)}</div>
+            <div className="text-xs text-slate-400">
+              {KIND_LABELS[a.kind] ? t(KIND_LABELS[a.kind]) : a.kind.replace("_", " ")} · {fmtDate(a.created_at)}
+              {a.is_mine === false && a.added_by && <> · {t("Added by {name}", { name: a.added_by })}</>}
+            </div>
           </div>
         </div>
         <div className="flex gap-1">
           {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="btn-ghost p-2" aria-label={t("Open link")}><ExternalLink className="h-4 w-4" /></a>}
-          <button onClick={onDelete} className="btn-ghost p-2 text-red-500" aria-label={t("Delete")}><Trash2 className="h-4 w-4" /></button>
+          {a.is_mine !== false && <button onClick={onDelete} className="btn-ghost p-2 text-red-500" aria-label={t("Delete")}><Trash2 className="h-4 w-4" /></button>}
         </div>
       </div>
       {Object.keys(a.metrics).length > 0 && (
@@ -239,10 +380,11 @@ function FileCard({ a, onDelete }: { a: ArtifactRow; onDelete: () => void }) {
   );
 }
 
-function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => void; onChanged: (deleted?: boolean) => void }) {
+function ProjectDetail({ id, version, onBack, onChanged, onAddMember }: { id: string; version: number; onBack?: () => void; onChanged: (deleted?: boolean) => void; onAddMember: () => void }) {
   const t = useT();
-  const { data, loading, error, reload } = useFetch(() => api<WorkProject>(`/api/student/work-projects/${id}`), [id]);
+  const { data, loading, error, reload } = useFetch(() => api<WorkProject>(`/api/student/work-projects/${id}`), [id, version]);
   const milestoneId = useCurrentMilestoneId();
+  const { user } = useAuth();
   // The stage the add-file window opens on; null = closed.
   const [adding, setAdding] = useState<number | null>(null);
 
@@ -261,6 +403,17 @@ function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => v
     if (!(await askConfirm(t('Delete "{name}" and all of its files?', { name: data.name })))) return;
     await api(`/api/student/work-projects/${id}`, { method: "DELETE" });
     onChanged(true);
+  };
+
+  const removeMember = async (m: Person) => {
+    const leaving = m.id === user?.id;
+    if (!(await askConfirm(leaving ? t('Leave "{name}"?', { name: data.name }) : t("Remove {name} from this project?", { name: m.full_name })))) return;
+    await api(`/api/student/work-projects/${id}/members/${m.id}`, { method: "DELETE" });
+    if (leaving) onChanged(true);
+    else {
+      reload();
+      onChanged();
+    }
   };
 
   return (
@@ -286,7 +439,34 @@ function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => v
           {data.url && (
             <a href={data.url} target="_blank" rel="noreferrer" className="btn-outline mt-4 w-full"><ExternalLink className="h-4 w-4" /> {t("Open project link")}</a>
           )}
-          <button className="btn-ghost mt-2 w-full text-red-600" onClick={removeProject}><Trash2 className="h-4 w-4" /> {t("Delete project")}</button>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Users className="h-4 w-4 text-brand-600" /> {t("Team")}</h3>
+              <button className="btn-ghost px-2 py-1 text-xs" onClick={onAddMember}><UserPlus className="h-3.5 w-3.5" /> {t("Add student")}</button>
+            </div>
+            <ul className="space-y-1.5 text-sm">
+              {data.owner && (
+                <li className="flex items-center justify-between gap-2">
+                  <span className="truncate text-slate-700">{data.owner.full_name}</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-600"><Crown className="h-3 w-3" /> {t("Owner")}</span>
+                </li>
+              )}
+              {data.members.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate text-slate-700">{m.full_name}</span>
+                  {(data.is_owner || m.id === user?.id) && (
+                    <button onClick={() => removeMember(m)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-500" aria-label={t("Remove {name}", { name: m.full_name })}><X className="h-3.5 w-3.5" /></button>
+                  )}
+                </li>
+              ))}
+              {data.members.length === 0 && <li className="text-xs text-slate-400">{t("Only you so far.")}</li>}
+            </ul>
+          </div>
+          {data.is_owner ? (
+            <button className="btn-ghost mt-3 w-full text-red-600" onClick={removeProject}><Trash2 className="h-4 w-4" /> {t("Delete project")}</button>
+          ) : (
+            user && <button className="btn-ghost mt-3 w-full text-red-600" onClick={() => removeMember({ id: user.id, full_name: user.full_name, student_number: null })}><LogOut className="h-4 w-4 rtl:rotate-180" /> {t("Leave project")}</button>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -349,6 +529,12 @@ function ProjectCard({ wp, onOpen }: { wp: WorkProject; onOpen: () => void }) {
       </div>
       <div className="mt-4 font-semibold text-slate-900">{wp.name}</div>
       <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-slate-500">{wp.description || t("No description")}</p>
+      <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
+        <Users className="h-3.5 w-3.5" />
+        {wp.is_owner
+          ? wp.members.length === 0 ? t("Only you") : t("You + {n} students", { n: wp.members.length })
+          : t("Shared by {name}", { name: wp.owner?.full_name ?? "" })}
+      </div>
       <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
         {wp.stages === 1 ? t("1 stage") : wp.stages === 2 ? t("2 stages") : t("{n} stages", { n: wp.stages })} ·{" "}
         {wp.file_count === 1
@@ -364,6 +550,9 @@ export default function MyProjects() {
   const { data, loading, error, reload } = useFetch(() => api<WorkProject[]>("/api/student/work-projects"));
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
+  // Project pre-selected in the add-student window; null = closed.
+  const [addingMember, setAddingMember] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
 
   if (loading && !data) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
@@ -385,7 +574,14 @@ export default function MyProjects() {
       <PageHeader
         title={t("My Projects")}
         subtitle={t("Your projects and their files. File metadata (commit logs, submission times) is used as objective behavioral evidence; content is never graded.")}
-        actions={projects.length > 0 && <button className="btn-primary" onClick={() => setCreating(true)}><FolderPlus className="h-4 w-4" /> {t("Add project")}</button>}
+        actions={
+          projects.length > 0 && (
+            <>
+              <button className="btn-outline" onClick={() => setAddingMember(selected ?? "")}><UserPlus className="h-4 w-4" /> {t("Add student")}</button>
+              <button className="btn-primary" onClick={() => setCreating(true)}><FolderPlus className="h-4 w-4" /> {t("Add project")}</button>
+            </>
+          )
+        }
       />
 
       {projects.length === 0 ? (
@@ -398,6 +594,8 @@ export default function MyProjects() {
         <ProjectDetail
           key={selected}
           id={selected}
+          version={version}
+          onAddMember={() => setAddingMember(selected)}
           onBack={projects.length > 1 ? () => open(null) : undefined}
           onChanged={(deleted) => {
             if (deleted) open(null);
@@ -412,6 +610,20 @@ export default function MyProjects() {
 
       <Modal open={creating} title={t("Add project")} onClose={() => setCreating(false)}>
         <ProjectForm onCreated={created} />
+      </Modal>
+
+      <Modal open={addingMember !== null} title={t("Add student to a project")} onClose={() => setAddingMember(null)}>
+        <AddMemberForm
+          key={addingMember ?? ""}
+          projects={projects}
+          initialProjectId={addingMember ?? ""}
+          onDone={(pid) => {
+            setAddingMember(null);
+            reload();
+            setVersion((v) => v + 1);
+            open(pid);
+          }}
+        />
       </Modal>
     </div>
   );

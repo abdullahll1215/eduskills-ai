@@ -23,9 +23,10 @@ from ..models import (
     SkillRating,
     User,
     WorkProject,
+    WorkProjectMember,
     utcnow,
 )
-from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
+from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, MembersIn, PeerEvaluationIn, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
 from ..services.common import competency_out, default_work_project, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
@@ -596,28 +597,77 @@ def _artifact_out(a: Artifact) -> dict:
     return {"id": a.id, "milestone_id": a.milestone_id, "work_project_id": a.work_project_id, "stage": a.stage or 1, "kind": a.kind, "title": a.title, "url": a.url, "metrics": a.metrics, "created_at": a.created_at}
 
 
-def _own_work_project(db: Session, user: User, wp_id: str) -> WorkProject:
+def _member_ids(db: Session, wp: WorkProject) -> list[str]:
+    return list(db.scalars(select(WorkProjectMember.user_id).where(WorkProjectMember.work_project_id == wp.id).order_by(WorkProjectMember.added_at)))
+
+
+def _work_project_for(db: Session, user: User, wp_id: str, owner_only: bool = False) -> WorkProject:
+    """The project when the user owns it or (unless owner_only) is a member of it."""
     wp = db.get(WorkProject, wp_id)
-    if not wp or wp.student_id != user.id:
+    if not wp or (wp.student_id != user.id and (owner_only or user.id not in _member_ids(db, wp))):
         raise HTTPException(404, "Project not found")
     return wp
 
 
-def _work_project_out(db: Session, wp: WorkProject, with_files: bool = False) -> dict:
+def _own_work_project(db: Session, user: User, wp_id: str) -> WorkProject:
+    return _work_project_for(db, user, wp_id, owner_only=True)
+
+
+def _person(u: User) -> dict:
+    return {"id": u.id, "full_name": u.full_name, "student_number": u.student_number}
+
+
+def _work_project_out(db: Session, wp: WorkProject, user: User, with_files: bool = False) -> dict:
     files = db.scalars(select(Artifact).where(Artifact.work_project_id == wp.id).order_by(Artifact.created_at.desc())).all()
+    owner = db.get(User, wp.student_id)
+    members = [m for m in (db.get(User, uid) for uid in _member_ids(db, wp)) if m]
     out = {
         "id": wp.id, "name": wp.name, "description": wp.description, "url": wp.url, "stages": wp.stages or 1, "created_at": wp.created_at,
         "file_count": len(files), "updated_at": files[0].created_at if files else wp.created_at,
+        "is_owner": wp.student_id == user.id, "owner": _person(owner) if owner else None, "members": [_person(m) for m in members],
     }
     if with_files:
-        out["files"] = [_artifact_out(a) for a in files]
+        names = {u.id: u.full_name for u in [owner, *members] if u}
+        for a in files:  # files added by a member who has since left the project
+            if a.student_id not in names and (u := db.get(User, a.student_id)):
+                names[u.id] = u.full_name
+        out["files"] = [{**_artifact_out(a), "added_by": names.get(a.student_id), "is_mine": a.student_id == user.id} for a in files]
     return out
+
+
+def _add_members(db: Session, user: User, wp: WorkProject, student_ids: list[str]) -> int:
+    existing = set(_member_ids(db, wp)) | {wp.student_id}
+    added = 0
+    for sid in dict.fromkeys(student_ids):
+        if sid in existing:
+            continue
+        s = db.get(User, sid)
+        if not s or s.role != Role.STUDENT.value or not s.is_active:
+            raise HTTPException(404, "Student not found")
+        db.add(WorkProjectMember(work_project_id=wp.id, user_id=sid))
+        audit.notify(db, sid, f"{user.full_name} added you to a project", wp.name, "project", "/student/artifacts")
+        existing.add(sid)
+        added += 1
+    return added
 
 
 @router.get("/work-projects")
 def list_work_projects(user: User = Depends(student_only), db: Session = Depends(get_db)):
-    rows = db.scalars(select(WorkProject).where(WorkProject.student_id == user.id).order_by(WorkProject.created_at)).all()
-    return [_work_project_out(db, wp) for wp in rows]
+    shared = select(WorkProjectMember.work_project_id).where(WorkProjectMember.user_id == user.id)
+    rows = db.scalars(
+        select(WorkProject).where((WorkProject.student_id == user.id) | WorkProject.id.in_(shared)).order_by(WorkProject.created_at)
+    ).all()
+    return [_work_project_out(db, wp, user) for wp in rows]
+
+
+@router.get("/work-projects/candidates")
+def project_member_candidates(q: str = "", user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Students who can be added to a project (search by name or university ID)."""
+    query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True), User.id != user.id)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
+    return [_person(u) for u in db.scalars(query.order_by(User.full_name).limit(20))]
 
 
 @router.post("/work-projects", status_code=201)
@@ -626,20 +676,43 @@ def add_work_project(body: WorkProjectIn, user: User = Depends(student_only), db
         raise HTTPException(422, "The project link must start with http:// or https://")
     wp = WorkProject(student_id=user.id, name=body.name.strip(), description=(body.description or "").strip() or None, url=body.url or None, stages=body.stages)
     db.add(wp)
+    db.flush()
+    _add_members(db, user, wp, body.member_ids)
     audit.log(db, user, "work_project.added", "work_project", wp.id, wp.name)
     db.commit()
-    return _work_project_out(db, wp, with_files=True)
+    return _work_project_out(db, wp, user, with_files=True)
 
 
 @router.get("/work-projects/{wp_id}")
 def get_work_project(wp_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    return _work_project_out(db, _own_work_project(db, user, wp_id), with_files=True)
+    return _work_project_out(db, _work_project_for(db, user, wp_id), user, with_files=True)
+
+
+@router.post("/work-projects/{wp_id}/members")
+def add_work_project_members(wp_id: str, body: MembersIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """The owner and the members can add students to a project."""
+    wp = _work_project_for(db, user, wp_id)
+    added = _add_members(db, user, wp, body.student_ids)
+    db.commit()
+    return {**_work_project_out(db, wp, user), "added": added}
+
+
+@router.delete("/work-projects/{wp_id}/members/{student_id}")
+def remove_work_project_member(wp_id: str, student_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """The owner removes anyone; a member can only remove themselves (leave the project)."""
+    wp = _work_project_for(db, user, wp_id)
+    if wp.student_id != user.id and student_id != user.id:
+        raise HTTPException(403, "Only the project owner can remove members")
+    db.execute(delete(WorkProjectMember).where(WorkProjectMember.work_project_id == wp.id, WorkProjectMember.user_id == student_id))
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/work-projects/{wp_id}")
 def delete_work_project(wp_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
     wp = _own_work_project(db, user, wp_id)
     db.execute(delete(Artifact).where(Artifact.work_project_id == wp.id))
+    db.execute(delete(WorkProjectMember).where(WorkProjectMember.work_project_id == wp.id))
     db.delete(wp)
     db.commit()
     return {"ok": True}
@@ -657,7 +730,7 @@ def list_artifacts(milestone_id: str | None = None, user: User = Depends(student
 def add_artifact(body: ArtifactIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
     _require_enrollment(db, user, m)
-    wp = _own_work_project(db, user, body.work_project_id) if body.work_project_id else default_work_project(db, user.id, m.project_id)
+    wp = _work_project_for(db, user, body.work_project_id) if body.work_project_id else default_work_project(db, user.id, m.project_id)
     stage = body.stage or 1
     if stage > (wp.stages or 1):
         raise HTTPException(422, "This project does not have that stage")

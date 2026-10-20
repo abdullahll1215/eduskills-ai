@@ -358,17 +358,51 @@ export function passportCsv(db: DemoDB, user: any, pid?: string | null) {
 route("GET", "/api/student/passport.pdf", ({ db, user, q }) => passportCsv(db, user, q.get("project_id")));
 route("GET", "/api/student/passport.csv", ({ db, user, q }) => passportCsv(db, user, q.get("project_id")));
 
-const ownWorkProject = (db: DemoDB, user: any, id: string) => {
-  const wp = db.work_projects.find((w) => w.id === id && w.student_id === user.id);
-  if (!wp) fail(404, "Project not found");
+const memberIds = (db: DemoDB, wp: any): string[] => db.work_project_members.filter((m) => m.work_project_id === wp.id).map((m) => m.user_id);
+/** The project when the user owns it or (unless ownerOnly) is a member of it. */
+const workProjectFor = (db: DemoDB, user: any, id: string, ownerOnly = false) => {
+  const wp = db.work_projects.find((w) => w.id === id);
+  if (!wp || (wp.student_id !== user.id && (ownerOnly || !memberIds(db, wp).includes(user.id)))) fail(404, "Project not found");
   return wp!;
 };
-const workProjectOut = (db: DemoDB, wp: any, withFiles = false) => {
+const ownWorkProject = (db: DemoDB, user: any, id: string) => workProjectFor(db, user, id, true);
+const person = (u: any) => ({ id: u.id, full_name: u.full_name, student_number: u.student_number ?? null });
+const workProjectOut = (db: DemoDB, wp: any, user: any, withFiles = false) => {
   const files = db.artifacts.filter((a) => a.work_project_id === wp.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  return { ...wp, stages: wp.stages ?? 1, file_count: files.length, updated_at: files[0]?.created_at ?? wp.created_at, ...(withFiles ? { files } : {}) };
+  const owner = db.users.find((u) => u.id === wp.student_id);
+  const members = memberIds(db, wp).map((id) => db.users.find((u) => u.id === id)).filter(Boolean);
+  const name = (id: string) => db.users.find((u) => u.id === id)?.full_name ?? null;
+  return {
+    ...wp, stages: wp.stages ?? 1, file_count: files.length, updated_at: files[0]?.created_at ?? wp.created_at,
+    is_owner: wp.student_id === user.id, owner: owner ? person(owner) : null, members: members.map(person),
+    ...(withFiles ? { files: files.map((a) => ({ ...a, added_by: name(a.student_id), is_mine: a.student_id === user.id })) } : {}),
+  };
 };
+function addMembers(db: DemoDB, user: any, wp: any, ids: string[]) {
+  const existing = new Set([...memberIds(db, wp), wp.student_id]);
+  let added = 0;
+  for (const sid of [...new Set(ids ?? [])]) {
+    if (existing.has(sid)) continue;
+    const s = db.users.find((u) => u.id === sid && u.role === "student" && u.is_active);
+    if (!s) fail(404, "Student not found");
+    db.work_project_members.push({ id: uid(), work_project_id: wp.id, user_id: sid, added_at: nowIso() });
+    notify(db, sid, `${user.full_name} added you to a project`, wp.name, "project", "/student/artifacts");
+    existing.add(sid);
+    added++;
+  }
+  return added;
+}
 route("GET", "/api/student/work-projects", ({ db, user }) =>
-  db.work_projects.filter((w) => w.student_id === user.id).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((w) => workProjectOut(db, w)));
+  db.work_projects
+    .filter((w) => w.student_id === user.id || memberIds(db, w).includes(user.id))
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((w) => workProjectOut(db, w, user)));
+route("GET", "/api/student/work-projects/candidates", ({ db, user, q }) => {
+  const term = (q.get("q") ?? "").trim().toLowerCase();
+  return db.users
+    .filter((u) => u.role === "student" && u.is_active && u.id !== user.id && (!term || `${u.full_name} ${u.student_number ?? ""}`.toLowerCase().includes(term)))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name)).slice(0, 20).map(person);
+});
 route("POST", "/api/student/work-projects", ({ db, user, body }) => {
   const name = String(body.name ?? "").trim();
   if (!name) fail(422, "Project name is required");
@@ -377,12 +411,26 @@ route("POST", "/api/student/work-projects", ({ db, user, body }) => {
   if (!Number.isInteger(stages) || stages < 1 || stages > 10) fail(422, "The number of stages must be between 1 and 10");
   const wp = { id: uid(), student_id: user.id, name, description: String(body.description ?? "").trim() || null, url: body.url || null, stages, created_at: nowIso() };
   db.work_projects.push(wp);
-  return workProjectOut(db, wp, true);
+  addMembers(db, user, wp, body.member_ids ?? []);
+  return workProjectOut(db, wp, user, true);
 });
-route("GET", "/api/student/work-projects/:id", ({ db, user, p }) => workProjectOut(db, ownWorkProject(db, user, p.id), true));
+route("GET", "/api/student/work-projects/:id", ({ db, user, p }) => workProjectOut(db, workProjectFor(db, user, p.id), user, true));
+route("POST", "/api/student/work-projects/:id/members", ({ db, user, p, body }) => {
+  const wp = workProjectFor(db, user, p.id);
+  if (!body.student_ids?.length) fail(422, "Choose at least one student");
+  const added = addMembers(db, user, wp, body.student_ids);
+  return { ...workProjectOut(db, wp, user), added };
+});
+route("DELETE", "/api/student/work-projects/:id/members/:sid", ({ db, user, p }) => {
+  const wp = workProjectFor(db, user, p.id);
+  if (wp.student_id !== user.id && p.sid !== user.id) fail(403, "Only the project owner can remove members");
+  db.work_project_members = db.work_project_members.filter((m) => !(m.work_project_id === wp.id && m.user_id === p.sid));
+  return { ok: true };
+});
 route("DELETE", "/api/student/work-projects/:id", ({ db, user, p }) => {
   const wp = ownWorkProject(db, user, p.id);
   db.artifacts = db.artifacts.filter((a) => a.work_project_id !== wp.id);
+  db.work_project_members = db.work_project_members.filter((m) => m.work_project_id !== wp.id);
   db.work_projects = db.work_projects.filter((w) => w.id !== wp.id);
   return { ok: true };
 });
@@ -399,7 +447,7 @@ route("POST", "/api/student/artifacts", ({ db, user, body }) => {
     const at = body.submitted_at ? new Date(body.submitted_at) : new Date();
     metrics = due ? { submitted_at: at.toISOString(), hours_before_due: round((due.getTime() - at.getTime()) / 3600000, 1), on_time: at <= due } : { submitted_at: at.toISOString() };
   }
-  const wp = body.work_project_id ? ownWorkProject(db, user, body.work_project_id) : defaultWorkProject(db, user.id, m.project_id);
+  const wp = body.work_project_id ? workProjectFor(db, user, body.work_project_id) : defaultWorkProject(db, user.id, m.project_id);
   const stage = Number(body.stage ?? 1);
   if (!Number.isInteger(stage) || stage < 1 || stage > (wp.stages ?? 1)) fail(422, "This project does not have that stage");
   const a = { id: uid(), student_id: user.id, project_id: m.project_id, milestone_id: m.id, work_project_id: wp.id, stage, kind: body.kind, title: body.title, url: body.url ?? null, metrics, created_at: nowIso() };

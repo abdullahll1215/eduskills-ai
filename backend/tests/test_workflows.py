@@ -282,3 +282,30 @@ def test_report_in_arabic(client, khalid):
     again = client.get(f"/api/student/reports/{mid}", headers={**khalid, "X-Lang": "ar"}).json()["content"]
     assert again["paragraphs"] == ar["paragraphs"]
     assert client.get(f"/api/student/reports/{mid}", headers=khalid).json()["content"]["headline"] == en["headline"]
+
+
+def test_work_project_team_members(client):
+    owner = login(client, "omar@student.kfu.edu.sa")
+    cands = client.get("/api/student/work-projects/candidates", headers=owner, params={"q": "yousef"}).json()
+    majed = client.get("/api/student/work-projects/candidates", headers=owner, params={"q": "majed"}).json()[0]
+    r = client.post("/api/student/work-projects", headers=owner, json={"name": "Team app", "stages": 2, "member_ids": [cands[0]["id"]]})
+    assert r.status_code == 201 and [m["full_name"] for m in r.json()["members"]] == [cands[0]["full_name"]]
+    wp = r.json()["id"]
+    # The member sees the shared project and can add a file to it
+    member = login(client, "yousef@student.kfu.edu.sa")
+    shared = next(p for p in client.get("/api/student/work-projects", headers=member).json() if p["id"] == wp)
+    assert shared["is_owner"] is False and shared["owner"]["full_name"].startswith("Omar")
+    m3 = _active(_project(client, member))
+    f = client.post("/api/student/artifacts", headers=member, json={"milestone_id": m3["id"], "work_project_id": wp, "stage": 2, "kind": "link", "title": "Specs"})
+    assert f.status_code == 201
+    files = client.get(f"/api/student/work-projects/{wp}", headers=owner).json()["files"]
+    assert files[0]["added_by"].startswith("Yousef") and files[0]["is_mine"] is False
+    # Adding another student; only the owner can remove others, a member can leave
+    assert client.post(f"/api/student/work-projects/{wp}/members", headers=member, json={"student_ids": [majed["id"]]}).json()["added"] == 1
+    assert client.delete(f"/api/student/work-projects/{wp}/members/{majed['id']}", headers=member).status_code == 403
+    assert client.delete(f"/api/student/work-projects/{wp}", headers=member).status_code == 404  # only the owner deletes
+    me = client.get("/api/auth/me", headers=member).json()["id"]
+    assert client.delete(f"/api/student/work-projects/{wp}/members/{me}", headers=member).json()["ok"]
+    assert all(p["id"] != wp for p in client.get("/api/student/work-projects", headers=member).json())
+    outsider = login(client, "ali@student.kfu.edu.sa")
+    assert client.get(f"/api/student/work-projects/{wp}", headers=outsider).status_code == 404

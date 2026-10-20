@@ -16,7 +16,7 @@ export interface Rep {
 type Row = Record<string, any>;
 export interface DemoDB {
   users: Row[]; projects: Row[]; milestones: Row[]; teams: Row[]; enrollments: Row[]; competencies: Row[];
-  evaluations: Ev[]; reports: Rep[]; resources: Row[]; artifacts: Row[]; work_projects: Row[]; notifications: Row[]; interventions: Row[];
+  evaluations: Ev[]; reports: Rep[]; resources: Row[]; artifacts: Row[]; work_projects: Row[]; work_project_members: Row[]; notifications: Row[]; interventions: Row[];
   audit: Row[]; chat: Row[]; settings: Record<string, string>; backups: Row[];
 }
 
@@ -55,6 +55,7 @@ export function defaultWorkProject(db: DemoDB, studentId: string, projectId: str
 
 function groupOrphanArtifacts(db: DemoDB) {
   db.work_projects ??= [];
+  db.work_project_members ??= [];
   for (const a of db.artifacts) {
     if (!a.work_project_id) a.work_project_id = defaultWorkProject(db, a.student_id, a.project_id).id;
     // Files from before stages existed go to the stage matching their milestone number.

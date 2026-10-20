@@ -159,6 +159,8 @@ const server: Record<string, string> = {
   "Please write a comment": "يرجى كتابة تعليق",
   "Precondition failed: the student has not submitted the self-assessment (UC-01)": "لا يمكن المتابعة: الطالب لم يرسل تقييمه الذاتي بعد",
   "Project name is required": "اسم المشروع مطلوب",
+  "Only the project owner can remove members": "مالك المشروع فقط يقدر يزيل الأعضاء",
+  "Choose at least one student": "اختر طالبًا واحدًا على الأقل",
   "This project does not have that stage": "هذا المشروع لا يحتوي على هذه المرحلة",
   "The number of stages must be between 1 and 10": "عدد المراحل يجب أن يكون من 1 إلى 10",
   "Project not found": "المشروع غير موجود",
