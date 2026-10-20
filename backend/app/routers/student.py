@@ -31,7 +31,7 @@ from ..models import (
 from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, CreateTeamIn, JoinTeamIn, MembersIn, PeerEvaluationIn, RatingsMixin, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
-from ..services.common import competency_out, default_work_project, enrollment_of, new_code, normalise_code, get_or_404, milestone_out, teammates, validate_ratings
+from ..services.common import competency_out, course_number_of, default_work_project, enrollment_of, find_team_by_code, team_code, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
 from ..services.report_state import is_current, lock_student_milestone
 
@@ -257,7 +257,7 @@ def my_teams(user: User = Depends(student_only), db: Session = Depends(get_db)):
 
 @router.post("/team/join")
 def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    team = db.scalar(select(Team).where(Team.invite_code == normalise_code(body.code)))
+    team = find_team_by_code(db, body.code)
     if not team:
         raise HTTPException(404, "No team has this invite code")
     enr = _place_in_team(db, user, team)
@@ -270,13 +270,20 @@ def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session 
 
 @router.post("/team/create", status_code=201)
 def create_team(body: CreateTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
-    project = db.scalar(select(Project).where(Project.join_code == normalise_code(body.course_code)))
+    number = course_number_of(body.course_code)
+    project = db.scalar(select(Project).where(Project.join_code == number))
     if not project:
-        raise HTTPException(404, "No course has this code. Ask your instructor for the course code.")
+        # A course number nobody has used yet starts a new course; an instructor can be assigned later.
+        project = Project(title=f"Course {number}", join_code=number, is_active=True)
+        db.add(project)
+        db.flush()
+        for i, stage in enumerate(["Requirements", "Design", "Implementation"], start=1):
+            db.add(Milestone(project_id=project.id, number=i, name=stage, status="active" if i == 1 else "planned"))
+        audit.log(db, user, "project.created_by_student", "project", project.id, number)
     name = body.team_name.strip()
     if db.scalar(select(Team.id).where(Team.project_id == project.id, Team.team_name.ilike(name))):
         raise HTTPException(409, "A team with this name already exists in this course")
-    team = Team(project_id=project.id, team_name=name, invite_code=new_code(db, Team, Team.invite_code))
+    team = Team(project_id=project.id, team_name=name, invite_code=team_code(db, number, name))
     db.add(team)
     db.flush()
     db.refresh(team)

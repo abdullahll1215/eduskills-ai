@@ -282,7 +282,8 @@ def test_personal_self_assessment_needs_no_course_and_is_private(isolated):
     assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": {}}).status_code == 422
     assert client.post("/api/student/personal-self-assessment", headers=headers, json={"ratings": {c: 6 for c in ratings}}).status_code == 422
     # A failed optional join never removes access to personal assessment.
-    assert client.post("/api/student/team/create", headers=headers, json={"course_code": "WRONG123", "team_name": "My team"}).status_code == 404
+    # A malformed course number is refused (an unknown well-formed number would start a new course)
+    assert client.post("/api/student/team/create", headers=headers, json={"course_code": "WRONG123", "team_name": "My team"}).status_code == 422
     assert client.get("/api/student/personal-self-assessment", headers=headers).status_code == 200
     assert client.get("/api/student/reports", headers=headers).json() == []
 

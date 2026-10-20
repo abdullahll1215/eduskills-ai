@@ -241,7 +241,24 @@ route("GET", "/api/student/evaluation-targets", ({ db, user, q }) => {
     }));
 });
 // ------------------------------------------------------- team membership --
-const normaliseCode = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+// Codes match ignoring case, spaces and dashes (mirrors services/common.py).
+const normaliseCode = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+const findTeamByCode = (db: DemoDB, code: unknown) => {
+  const wanted = normaliseCode(code);
+  return wanted ? db.teams.find((x) => normaliseCode(x.invite_code) === wanted) : undefined;
+};
+function courseNumberOf(raw: unknown): string {
+  const number = String(raw ?? "").replace(/\D/g, "");
+  if (number.length < 4 || number.length > 10 || number.length !== normaliseCode(raw).length) fail(422, "The course number must be 4 to 10 digits");
+  return number;
+}
+/** Readable invite code: course number + team name, e.g. 1234-ALPHA. */
+function teamCode(db: DemoDB, courseNumber: string, teamName: string): string {
+  const base = `${courseNumber}-${normaliseCode(teamName).slice(0, 40) || "TEAM"}`;
+  let code = base;
+  for (let n = 2; findTeamByCode(db, code); n++) code = `${base}${n}`;
+  return code;
+}
 function teamOut(db: DemoDB, e: any) {
   const p = db.projects.find((x) => x.id === e.project_id)!;
   const t = db.teams.find((x) => x.id === e.team_id);
@@ -260,18 +277,25 @@ function placeInTeam(db: DemoDB, user: any, t: any) {
 route("GET", "/api/student/team", ({ db, user }) => (studentOnly(user), db.enrollments.filter((e) => e.user_id === user.id).map((e) => teamOut(db, e))));
 route("POST", "/api/student/team/join", ({ db, user, body }) => {
   studentOnly(user);
-  const t = db.teams.find((x) => x.invite_code === normaliseCode(body.code)) ?? fail(404, "No team has this invite code");
+  const t = findTeamByCode(db, body.code) ?? fail(404, "No team has this invite code");
   const e = placeInTeam(db, user, t);
   teammates(db, e).forEach((m: any) => notify(db, m.id, `${user.full_name} joined your team`, t.team_name, "info", "/student"));
   return teamOut(db, e);
 });
 route("POST", "/api/student/team/create", ({ db, user, body }) => {
   studentOnly(user);
-  const p = db.projects.find((x) => x.join_code === normaliseCode(body.course_code)) ?? fail(404, "No course has this code. Ask your instructor for the course code.");
+  const number = courseNumberOf(body.course_code);
   const name = String(body.team_name ?? "").trim();
   if (name.length < 2) fail(422, "Please enter a team name");
+  let p = db.projects.find((x) => x.join_code === number);
+  if (!p) {
+    // A course number nobody has used yet starts a new course; an instructor can be assigned later.
+    p = { id: uid(), title: `Course ${number}`, description: null, instructor_id: null, is_active: true, join_code: number, created_at: nowIso() };
+    db.projects.push(p);
+    ["Requirements", "Design", "Implementation"].forEach((n, i) => db.milestones.push({ id: uid(), project_id: p!.id, number: i + 1, name: n, description: null, due_date: null, status: i === 0 ? "active" : "planned" }));
+  }
   if (db.teams.some((x) => x.project_id === p.id && x.team_name.toLowerCase() === name.toLowerCase())) fail(409, "A team with this name already exists in this course");
-  const t = { id: uid(), project_id: p.id, team_name: name, invite_code: newCode(db.teams, "invite_code") };
+  const t = { id: uid(), project_id: p.id, team_name: name, invite_code: teamCode(db, number, name) };
   db.teams.push(t);
   return teamOut(db, placeInTeam(db, user, t));
 });
@@ -787,6 +811,11 @@ route("POST", "/api/projects", ({ db, user, body }) => {
 route("PUT", "/api/projects/:id", ({ db, user, p: params, body }) => {
   const p = projFor(db, user, params.id);
   Object.assign(p, { title: body.title, description: body.description, is_active: body.is_active });
+  if (body.course_number && body.course_number !== p.join_code) {
+    if (!/^\d{4,10}$/.test(body.course_number)) fail(422, "The course number must be 4 to 10 digits");
+    if (db.projects.some((x) => x.id !== p.id && x.join_code === body.course_number)) fail(409, "Another course already uses this course number");
+    p.join_code = body.course_number;
+  }
   if (user.role === "admin" && body.instructor_id) p.instructor_id = body.instructor_id;
   return projectOut(db, p);
 });
@@ -827,7 +856,7 @@ route("DELETE", "/api/projects/milestones/:id", ({ db, user, p: params }) => {
 });
 route("POST", "/api/projects/:id/teams", ({ db, user, p: params, body }) => {
   const p = projFor(db, user, params.id);
-  const t = { id: uid(), project_id: p.id, team_name: body.team_name, invite_code: newCode(db.teams, "invite_code") };
+  const t = { id: uid(), project_id: p.id, team_name: body.team_name, invite_code: teamCode(db, p.join_code ?? "TEAM", body.team_name) };
   db.teams.push(t);
   return t;
 });

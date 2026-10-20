@@ -87,12 +87,19 @@ export default function Projects() {
                 <h2 className="text-lg font-semibold text-slate-900">{project.title}</h2>
                 <p className="text-sm text-slate-500">{project.description}</p>
                 <p className="mt-1 text-xs text-slate-400">{t("Instructor: {name}", { name: project.instructor?.full_name ?? "—" })}</p>
-                {project.join_code && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    {t("Course code")} <CopyCode code={project.join_code} />
-                    <span>{t("Students use it to create a team in this course.")}</span>
-                  </div>
-                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  {t("Course number")} {project.join_code && <CopyCode code={project.join_code} />}
+                  <button
+                    className="btn-ghost px-2 py-1 text-xs"
+                    onClick={async () => {
+                      const number = await askText(t("Course number (4 to 10 digits):"), project.join_code ?? "");
+                      if (number) run(() => api(`/api/projects/${project.id}`, { method: "PUT", body: { title: project.title, description: project.description, is_active: project.is_active, instructor_id: project.instructor?.id, course_number: number.trim() } }), t("Course number saved."));
+                    }}
+                  >
+                    {t("Edit")}
+                  </button>
+                  <span>{t("Students type it to create a team in this course.")}</span>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button className="btn-outline" onClick={() => run(() => api(`/api/projects/${project.id}`, { method: "PUT", body: { title: project.title, description: project.description, is_active: !project.is_active, instructor_id: project.instructor?.id } }), t("Project updated."))}>

@@ -202,7 +202,7 @@ export default function PeerEvaluation() {
     <div>
       <PageHeader title={t("Give Feedback")} subtitle={t("Evaluate only your own teammates. Search other students to view their published feedback summary; you cannot evaluate them.")} />
 
-      {!data?.peers.length && <div className="mb-5"><Alert>{t("You can explore student summaries now. Join a team when you want to give peer feedback.")} <Link className="underline" to="/student/team">{t("Join a team")}</Link></Alert></div>}
+      {!data?.peers.length && <div className="mb-5"><Alert>{t("You can explore student summaries now. Join a team when you want to give peer feedback.")} <Link className="underline" to="/student/artifacts">{t("Join a team")}</Link></Alert></div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <form onSubmit={submit} className="card p-6">
           {msg && (

@@ -121,7 +121,7 @@ class Team(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     team_name: Mapped[str] = mapped_column(String(120))
     # Shared by a team member so classmates can join the team.
-    invite_code: Mapped[str | None] = mapped_column(String(12), unique=True, nullable=True)
+    invite_code: Mapped[str | None] = mapped_column(String(60), unique=True, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="teams")
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="team")

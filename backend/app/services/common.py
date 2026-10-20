@@ -2,7 +2,7 @@
 import secrets
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Artifact, Competency, Enrollment, Milestone, Project, Role, Team, User, WorkProject
@@ -30,6 +30,31 @@ def ensure_codes(db: Session) -> None:
 
 def normalise_code(code: str) -> str:
     return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+def course_number_of(raw: str) -> str:
+    """A course number is 4 to 10 digits (spaces and dashes are ignored)."""
+    number = "".join(ch for ch in raw if ch.isdigit())
+    if len(number) < 4 or len(number) > 10 or len(number) != len(normalise_code(raw)):
+        raise HTTPException(422, "The course number must be 4 to 10 digits")
+    return number
+
+
+def team_code(db: Session, course_number: str, team_name: str) -> str:
+    """Readable invite code: course number + team name, e.g. 1234-ALPHA (a suffix keeps it unique)."""
+    base = f"{course_number}-{normalise_code(team_name)[:40] or 'TEAM'}"
+    code, n = base, 2
+    while find_team_by_code(db, code):
+        code, n = f"{base}{n}", n + 1
+    return code
+
+
+def find_team_by_code(db: Session, code: str) -> Team | None:
+    """Codes match ignoring case, spaces and dashes."""
+    wanted = normalise_code(code)
+    if not wanted:
+        return None
+    return db.scalar(select(Team).where(func.upper(func.replace(Team.invite_code, "-", "")) == wanted))
 
 
 def default_work_project(db: Session, student_id: str, project_id: str) -> WorkProject:

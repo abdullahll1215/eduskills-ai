@@ -301,5 +301,11 @@ const dict: Record<string, string> = {
   "You and {n} teammates": "أنت و{n} زملاء",
   "Choose the student from the list.": "اختر الطالب من القائمة.",
   "Share the invite code with classmates so they can join your team.": "شارك كود الدعوة مع زملائك عشان ينضمون لتيمك.",
+  "Course number": "رقم المادة",
+  "Enter the course number and a team name. A course that is not on the platform yet is created for you.": "اكتب رقم المادة واسم التيم. إذا المادة مو موجودة في المنصة، تنشأ تلقائيًا.",
+  "Your team code will be the course number and team name, e.g. 1234-ALPHA.": "كود التيم بيكون رقم المادة واسم التيم، مثل 1234-ALPHA.",
+  "Your team (optional)": "تيمك (اختياري)",
+  "Join a team to evaluate your teammates. Everything else works without one.": "انضم لتيم عشان تقيّم زملاءك. باقي المنصة تشتغل بدونه.",
+  "Only you so far": "أنت فقط حتى الآن",
 };
 export default dict;

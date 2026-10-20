@@ -124,6 +124,8 @@ class UserIn(BaseModel):
 class ProjectIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = None
+    # The course number students type to create a team in this course (4 to 10 digits).
+    course_number: str | None = Field(None, pattern=r"^\d{4,10}$")
     instructor_id: str | None = None
     is_active: bool = True
 
@@ -145,7 +147,7 @@ class JoinTeamIn(BaseModel):
 
 
 class CreateTeamIn(BaseModel):
-    course_code: str = Field(min_length=4, max_length=20)
+    course_code: str = Field(min_length=4, max_length=20)  # the course number
     team_name: str = Field(min_length=2, max_length=120)
 
 

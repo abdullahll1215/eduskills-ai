@@ -359,15 +359,16 @@ def test_join_team_with_invite_code(client, instructor):
     assert projects and any(m["status"] == "active" for m in projects[0]["milestones"])
 
 
-def test_create_team_needs_the_course_code(client, instructor):
+def test_create_team_in_an_existing_course(client, instructor):
     project = client.get("/api/instructor/projects", headers=instructor).json()[0]
-    code = client.get(f"/api/projects/{project['id']}", headers=instructor).json()["join_code"]
+    body = {"title": project["title"], "is_active": True, "course_number": "4242"}
+    assert client.put(f"/api/projects/{project['id']}", headers=instructor, json=body).status_code == 200
     h = _new_student(client, "founder@student.kfu.edu.sa")
-    assert client.post("/api/student/team/create", headers=h, json={"course_code": "NOPE1234", "team_name": "Gamma"}).status_code == 404
-    r = client.post("/api/student/team/create", headers=h, json={"course_code": code, "team_name": "Team Gamma"})
-    assert r.status_code == 201 and r.json()["team"]["team_name"] == "Team Gamma" and r.json()["team"]["invite_code"]
+    assert client.post("/api/student/team/create", headers=h, json={"course_code": "NOPE1234", "team_name": "Gamma"}).status_code == 422
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": "4242", "team_name": "Team Gamma"})
+    assert r.status_code == 201 and r.json()["project"]["id"] == project["id"] and r.json()["team"]["invite_code"] == "4242-TEAMGAMMA"
     other = _new_student(client, "copycat@student.kfu.edu.sa")
-    dup = client.post("/api/student/team/create", headers=other, json={"course_code": code, "team_name": "team gamma"})
+    dup = client.post("/api/student/team/create", headers=other, json={"course_code": "4242", "team_name": "team gamma"})
     assert dup.status_code == 409
 
 
@@ -378,3 +379,27 @@ def test_sign_in_portal_matches_the_role(client):
     assert client.post("/api/auth/login", json={**student, "portal": "staff"}).status_code == 403
     assert client.post("/api/auth/login", json={**staff, "portal": "staff"}).status_code == 200
     assert client.post("/api/auth/login", json={**student, "portal": "student"}).status_code == 200
+
+
+def test_team_code_is_course_number_and_team_name(client, instructor):
+    h = _new_student(client, "newcourse@student.kfu.edu.sa")
+    assert client.post("/api/student/team/create", headers=h, json={"course_code": "12ab", "team_name": "X"}).status_code == 422
+    # An unknown course number starts a new course
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": "7531", "team_name": "Team Nova"})
+    assert r.status_code == 201 and r.json()["team"]["invite_code"] == "7531-TEAMNOVA"
+    assert r.json()["project"]["title"] == "Course 7531"
+    projects = client.get("/api/student/projects", headers=h).json()
+    assert any(m["status"] == "active" for m in projects[0]["milestones"])
+    # A classmate joins with the readable code, typed loosely
+    mate = _new_student(client, "novamate@student.kfu.edu.sa")
+    r = client.post("/api/student/team/join", headers=mate, json={"code": "7531 teamnova"})
+    assert r.status_code == 200 and r.json()["team"]["team_name"] == "Team Nova"
+    # A second team in the same course reuses the course
+    third = _new_student(client, "novathird@student.kfu.edu.sa")
+    r = client.post("/api/student/team/create", headers=third, json={"course_code": "7531", "team_name": "Team Orion"})
+    assert r.json()["project"]["id"] == projects[0]["id"] and r.json()["team"]["invite_code"] == "7531-TEAMORION"
+    # The instructor can give an existing course its official number
+    pid = client.get("/api/instructor/projects", headers=instructor).json()[0]["id"]
+    body = {"title": "Graduation Project - IS 2026", "description": "x", "is_active": True, "course_number": "7531"}
+    assert client.put(f"/api/projects/{pid}", headers=instructor, json=body).status_code == 409  # taken
+    assert client.put(f"/api/projects/{pid}", headers=instructor, json={**body, "course_number": "4242"}).json()["join_code"] == "4242"
