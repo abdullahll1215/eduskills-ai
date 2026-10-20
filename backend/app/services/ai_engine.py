@@ -503,8 +503,9 @@ def recommend_resources(db: Session, snap: StudentSnapshot, limit: int = 4) -> l
     return out
 
 
-def generate_report(db: Session, student_id: str, milestone_id: str, force: bool = False) -> AIReport | None:
-    """UC-04 + UC-05 pipeline. Returns None when the 360° data is not complete yet."""
+def generate_report(db: Session, student_id: str, milestone_id: str, force: bool = False, use_ai: bool = True) -> AIReport | None:
+    """UC-04 + UC-05 pipeline. Returns None when the 360° data is not complete yet.
+    use_ai=False always uses the template (seeded data stays quick and deterministic)."""
     lock_student_milestone(db, student_id, milestone_id)
     cfg = scoring(db)
     snap = snapshot(db, student_id, milestone_id, cfg)
@@ -524,7 +525,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
 
     ai_cfg = ai_config(db)
     generated: GeneratedReport | None = None
-    if ai_cfg.usable:
+    if use_ai and ai_cfg.usable:
         try:
             generated = ai_report(ai_cfg, prompt)
         except Exception as exc:  # noqa: BLE001 - any API failure falls back to the template (UC-05 E4a)

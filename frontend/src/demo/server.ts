@@ -1033,6 +1033,9 @@ route("POST", "/api/admin/backups", ({ db, user }) => {
   log(db, user.id, "backup.created", "backup", b.id, `verified=${ok}`);
   return b;
 });
+// The online demo is already the sample cohort, so showcase data counts as added.
+route("GET", "/api/admin/showcase", ({ user }) => (admin(user), { exists: true, domain: "demo.example.com" }));
+route("POST", "/api/admin/showcase", ({ user }) => (admin(user), fail(409, "Showcase data already exists. Change its passwords from Users.")));
 route("POST", "/api/admin/retention/purge", ({ db, user }) => {
   admin(user);
   const days = Number(setting(db, "retention_days"));

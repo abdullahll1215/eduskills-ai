@@ -2,6 +2,9 @@
 
 Run manually with:  python -m app.seed  (the API also seeds automatically on first start).
 All demo accounts use the password: Password123!
+
+An administrator can also add the same cohort to a live system as showcase data (see seed_showcase):
+its accounts use the demo.example.com domain and a password chosen when it is created.
 """
 import random
 from datetime import timedelta
@@ -20,6 +23,7 @@ from .models import (
     LearningResource,
     Milestone,
     Moderation,
+    PersonalSelfAssessment,
     Project,
     Role,
     SkillRating,
@@ -31,6 +35,7 @@ from .security import encrypt, hash_password, reviewer_hash
 from .services import ai_engine, artifacts, nlp
 
 DEMO_PASSWORD = "Password123!"
+SHOWCASE_DOMAIN = "demo.example.com"
 
 COMPETENCIES = [
     ("COMMUNICATION", "Communication", "Clarity, frequency and effectiveness in exchanging information with the team.", {
@@ -162,8 +167,8 @@ def seed_reference(db: Session) -> dict[str, Competency]:
     return comps
 
 
-def _user(db, name, email, role, **kw) -> User:
-    u = User(full_name=name, email=email, role=role, password_hash=hash_password(DEMO_PASSWORD), **kw)
+def _user(db, name, email, role, password_hash, **kw) -> User:
+    u = User(full_name=name, email=email, role=role, password_hash=password_hash, **kw)
     db.add(u)
     return u
 
@@ -189,19 +194,25 @@ def _peer_comment(rng: random.Random, name: str, true_levels: list[float]) -> st
     return " ".join(parts)
 
 
-def seed_demo(db: Session):
+def seed_demo(db: Session, password: str = DEMO_PASSWORD, showcase: bool = False) -> Project:
+    """The demo cohort. As showcase data it skips the admin and second instructor and uses SHOWCASE_DOMAIN emails."""
     comps = seed_reference(db)
     rng = random.Random(2026)
+    pw = hash_password(password)  # hashed once: every demo account shares the password
 
-    _user(db, "System Admin", "admin@kfu.edu.sa", Role.ADMIN.value, department="IT Services")
-    instructor = _user(db, "Dr. Ahmed Alyahya", "ahmed@kfu.edu.sa", Role.INSTRUCTOR.value, department="Information Systems")
-    _user(db, "Dr. Abdullah Alaulamie", "abdullah@kfu.edu.sa", Role.INSTRUCTOR.value, department="Information Systems")
-    _user(db, "Ms. Noura Advisor", "advisor@kfu.edu.sa", Role.ADVISOR.value, department="Student Affairs")
+    def mail(address: str) -> str:
+        return f"{address.split('@')[0]}@{SHOWCASE_DOMAIN}" if showcase else address
+
+    if not showcase:
+        _user(db, "System Admin", "admin@kfu.edu.sa", Role.ADMIN.value, pw, department="IT Services")
+        _user(db, "Dr. Abdullah Alaulamie", "abdullah@kfu.edu.sa", Role.INSTRUCTOR.value, pw, department="Information Systems")
+    instructor = _user(db, "Dr. Ahmed Alyahya", mail("ahmed@kfu.edu.sa"), Role.INSTRUCTOR.value, pw, department="Information Systems")
+    _user(db, "Ms. Noura Advisor", mail("advisor@kfu.edu.sa"), Role.ADVISOR.value, pw, department="Student Affairs")
     db.flush()
 
     now = utcnow()
     project = Project(
-        title="Graduation Project - IS 2026",
+        title="Showcase - Graduation Project IS 2026" if showcase else "Graduation Project - IS 2026",
         description="Undergraduate capstone project (CCSIT, King Faisal University). 360° soft-skills assessment per milestone.",
         instructor_id=instructor.id,
     )
@@ -221,7 +232,9 @@ def seed_demo(db: Session):
         db.add(team)
         db.flush()
         for name, email, number, true, bias, growth in members:
-            u = _user(db, name, email, Role.STUDENT.value, student_number=number, level="Level 8", department="Information Systems", mobile="05" + number[-8:])
+            # Showcase data lives next to real students, so its IDs are clearly fake and it has no phone numbers
+            u = _user(db, name, mail(email), Role.STUDENT.value, pw, student_number=f"DEMO-{number[-5:]}" if showcase else number,
+                      level="Level 8", department="Information Systems", mobile=None if showcase else "05" + number[-8:])
             db.flush()
             db.add(Enrollment(user_id=u.id, project_id=project.id, team_id=team.id))
             roster.append((u, true, bias, growth, team_name))
@@ -251,7 +264,7 @@ def seed_demo(db: Session):
                         evaluator=instructor.id, notes="Reviewed commit history and meeting minutes for this milestone.")
         db.flush()
         for u, *_ in roster:
-            rep = ai_engine.generate_report(db, u.id, m.id)
+            rep = ai_engine.generate_report(db, u.id, m.id, use_ai=False)
             if rep:
                 rep.generated_at = when + timedelta(days=3, hours=1)
         db.flush()
@@ -290,7 +303,7 @@ def seed_demo(db: Session):
     ev.is_flagged, ev.flag_reason, ev.moderation_status = True, verdict.reason or "Unconstructive / Personal Attack", Moderation.PENDING.value
     db.flush()
     for u, *_ in beta[:2]:
-        ai_engine.generate_report(db, u.id, m3.id)
+        ai_engine.generate_report(db, u.id, m3.id, use_ai=False)
 
     # Artifact-informed behavioral markers for Khalid
     khalid = alpha[0][0]
@@ -302,8 +315,31 @@ def seed_demo(db: Session):
                         url="https://github.com/", metrics=artifacts.commit_indicators(artifacts.parse_git_log(log), m.due_date)))
         db.add(Artifact(student_id=khalid.id, project_id=project.id, milestone_id=m.id, kind="submission", title=f"M{m.number} deliverable",
                         metrics=artifacts.submission_indicators(m.due_date - timedelta(hours=rng.randint(2, 40)), m.due_date)))
+    # A private practice assessment, separate from the course 360 cycle
+    db.add(PersonalSelfAssessment(student_id=khalid.id, ratings={comps[code].id: score for code, score in zip(SKILLS, [4, 4, 3, 4, 5])}))
     db.flush()
     return project
+
+
+def showcase_exists(db: Session) -> bool:
+    return bool(db.scalar(select(User.id).where(User.email == f"ahmed@{SHOWCASE_DOMAIN}")))
+
+
+def seed_showcase(db: Session, password: str) -> dict:
+    """Adds the demo cohort to a live system so every feature can be shown; returns the sign-in details."""
+    project = seed_demo(db, password=password, showcase=True)
+    accounts = [
+        ("Instructor", "Dr. Ahmed Alyahya", "ahmed"),
+        ("Student", "Khalid S.", "khalid"),
+        ("Academic advisor", "Ms. Noura Advisor", "advisor"),
+    ]
+    return {
+        "project_id": project.id,
+        "project": project.title,
+        "password": password,
+        "accounts": [{"role": role, "name": name, "email": f"{local}@{SHOWCASE_DOMAIN}"} for role, name, local in accounts],
+        "teammates": [f"{email.split('@')[0]}@{SHOWCASE_DOMAIN}" for members in STUDENTS.values() for _, email, *_ in members][1:],
+    }
 
 
 def run(db: Session | None = None) -> bool:

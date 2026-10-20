@@ -1,5 +1,6 @@
 """System administration (UC-08): users, configuration, AI parameters, health, backups, retention, audit."""
 import math
+import secrets
 import time
 from datetime import timedelta
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from .. import seed
 from ..database import get_db
 from ..deps import admin_only
 from ..models import (
@@ -20,10 +22,10 @@ from ..models import (
     User,
     utcnow,
 )
-from ..schemas import CompetencyIn, ResourceIn, SettingsIn, UserIn
+from ..schemas import CompetencyIn, ResourceIn, SettingsIn, ShowcaseIn, UserIn
 from ..security import hash_password
 from ..services import ai_engine, audit, backup
-from ..services.common import competency_out, get_or_404, user_out
+from ..services.common import assign_orphan_artifacts, competency_out, ensure_codes, get_or_404, user_out
 from ..services.settings_store import DEFAULTS, ai_config, get_raw, public_settings, set_value
 from ..services.report_state import lock_report_configuration, lock_student_milestone
 from .student import run_job, trigger_report
@@ -278,6 +280,25 @@ def create_backup(admin: User = Depends(admin_only), db: Session = Depends(get_d
         audit.notify_role(db, Role.ADMIN, "EMERGENCY: backup verification failed", rec.details, "alert", "/admin/maintenance")
     db.commit()
     return {"id": rec.id, "filename": rec.filename, "verified": rec.verified, "details": rec.details, "size_bytes": rec.size_bytes}
+
+
+@router.get("/showcase")
+def showcase_status(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return {"exists": seed.showcase_exists(db), "domain": seed.SHOWCASE_DOMAIN}
+
+
+@router.post("/showcase", status_code=201)
+def create_showcase(body: ShowcaseIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Adds a sample course, staff and students so every feature can be demonstrated on a live system.
+    The password is shown once; it can be changed later from Users."""
+    if seed.showcase_exists(db):
+        raise HTTPException(409, "Showcase data already exists. Change its passwords from Users.")
+    result = seed.seed_showcase(db, body.password or f"Demo-{secrets.token_hex(4)}")
+    audit.log(db, admin, "showcase.created", "project", result["project_id"], f"accounts @{seed.SHOWCASE_DOMAIN}")
+    assign_orphan_artifacts(db)
+    ensure_codes(db)  # commits
+    result["course_number"] = db.get(Project, result["project_id"]).join_code
+    return result
 
 
 @router.post("/retention/purge")

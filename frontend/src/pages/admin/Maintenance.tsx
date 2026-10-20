@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { Alert, askConfirm, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
 import { useT } from "../../i18n";
+import ShowcaseCard from "./ShowcaseCard";
 
 interface Backup {
   id: string;
@@ -56,6 +57,7 @@ export default function Maintenance() {
           <button className="btn-danger mt-4" onClick={purge}><Trash2 className="h-4 w-4" /> {t("Run purge")}</button>
         </div>
       </div>
+      <ShowcaseCard />
       {loading ? (
         <Loading />
       ) : (
