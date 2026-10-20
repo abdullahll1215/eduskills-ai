@@ -158,6 +158,12 @@ class EnrollmentIn(BaseModel):
 
 class ShowcaseIn(BaseModel):
     password: str | None = Field(None, min_length=8, max_length=128)
+    # An existing instructor who should own the showcase course instead of the demo instructor
+    instructor_id: str | None = None
+
+
+class ShowcaseOwnerIn(BaseModel):
+    instructor_id: str
 
 
 class SettingsIn(BaseModel):

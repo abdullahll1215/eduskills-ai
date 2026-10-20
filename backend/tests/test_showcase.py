@@ -1,4 +1,5 @@
 """Showcase data: an administrator adds a sample cohort to a live system to demonstrate every feature."""
+from conftest import login
 
 
 def _sign_in(client, email, password, portal):
@@ -42,3 +43,20 @@ def test_showcase_creates_working_accounts(client, admin, instructor):
     # Showcase accounts cannot use the other portal, and the existing demo course is untouched
     assert client.post("/api/auth/login", json={"email": emails["Student"], "password": password, "portal": "staff"}).status_code == 403
     assert all(c["title"] != data["project"] for c in client.get("/api/instructor/projects", headers=instructor).json())
+
+
+def test_showcase_course_can_go_to_an_existing_instructor(client, admin):
+    if not client.get("/api/admin/showcase", headers=admin).json()["exists"]:
+        client.post("/api/admin/showcase", headers=admin, json={})
+    users = client.get("/api/admin/users", headers=admin, params={"role": "instructor"}).json()
+    other = next(u for u in users if u["email"] == "abdullah@kfu.edu.sa")
+    student_id = next(u["id"] for u in client.get("/api/admin/users", headers=admin, params={"role": "student"}).json())
+    assert client.put("/api/admin/showcase/instructor", headers=admin, json={"instructor_id": student_id}).status_code == 422
+    r = client.put("/api/admin/showcase/instructor", headers=admin, json={"instructor_id": other["id"]})
+    assert r.status_code == 200 and r.json()["instructor"]["email"] == "abdullah@kfu.edu.sa"
+    assert client.get("/api/admin/showcase", headers=admin).json()["instructor"]["id"] == other["id"]
+    # That instructor now sees the full showcase course
+    doctor = login(client, "abdullah@kfu.edu.sa")
+    course = next(c for c in client.get("/api/instructor/projects", headers=doctor).json() if c["title"].startswith("Showcase"))
+    overview = client.get("/api/instructor/overview", headers=doctor, params={"project_id": course["id"]}).json()
+    assert overview["flagged"] and len(overview["rows"]) == 8

@@ -1034,7 +1034,23 @@ route("POST", "/api/admin/backups", ({ db, user }) => {
   return b;
 });
 // The online demo is already the sample cohort, so showcase data counts as added.
-route("GET", "/api/admin/showcase", ({ user }) => (admin(user), { exists: true, domain: "demo.example.com" }));
+// Here the sample course plays the showcase course, found through Khalid as on the server.
+const showcaseProject = (db: DemoDB) => {
+  const khalid = db.users.find((u) => u.email === "khalid@student.kfu.edu.sa");
+  return db.projects.find((p) => db.enrollments.some((e) => e.user_id === khalid?.id && e.project_id === p.id));
+};
+route("GET", "/api/admin/showcase", ({ db, user }) => {
+  admin(user);
+  const owner = db.users.find((u) => u.id === showcaseProject(db)?.instructor_id);
+  return { exists: true, domain: "demo.example.com", instructor: owner ? userOut(owner) : null };
+});
+route("PUT", "/api/admin/showcase/instructor", ({ db, user, body }) => {
+  admin(user);
+  const project = showcaseProject(db) ?? fail(404, "Add the showcase data first");
+  const owner = db.users.find((u) => u.id === body.instructor_id && u.role === "instructor") ?? fail(422, "Choose an instructor account");
+  project.instructor_id = owner.id;
+  return { instructor: userOut(owner) };
+});
 route("POST", "/api/admin/showcase", ({ user }) => (admin(user), fail(409, "Showcase data already exists. Change its passwords from Users.")));
 route("POST", "/api/admin/retention/purge", ({ db, user }) => {
   admin(user);
