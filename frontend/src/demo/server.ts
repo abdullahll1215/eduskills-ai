@@ -238,9 +238,9 @@ route("POST", "/api/student/peer-evaluations", async ({ db, user, body }) => {
   const key = reviewerHash(user.id, m.project_id);
   if (db.evaluations.some((e) => e.milestone_id === m.id && e.target_id === body.target_id && e.reviewer_key === key)) fail(409, "You have already evaluated this student in the current evaluation period");
   const comment = String(body.comment ?? "").trim();
-  if (!comment) fail(422, "Please write a comment");
-  const v = contentFilter(comment);
-  const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: null, target_id: body.target_id, eval_type: "peer", reviewer_key: key, comment, evidence_link: null, notes: null, sentiment: sentiment(comment), is_flagged: v.is_toxic, flag_reason: v.reason, moderation_status: v.is_toxic ? "pending" : "none", is_locked: true, created_at: nowIso(), ratings };
+  // The written comment is optional: ratings alone are enough.
+  const v = comment ? contentFilter(comment) : { is_toxic: false, reason: null };
+  const ev: Ev = { id: uid(), project_id: m.project_id, milestone_id: m.id, evaluator_id: null, target_id: body.target_id, eval_type: "peer", reviewer_key: key, comment: comment || null, evidence_link: null, notes: null, sentiment: comment ? sentiment(comment) : null, is_flagged: v.is_toxic, flag_reason: v.reason, moderation_status: v.is_toxic ? "pending" : "none", is_locked: true, created_at: nowIso(), ratings };
   db.evaluations.push(ev);
   log(db, null, "evaluation.peer_submitted", "evaluation", ev.id, `milestone=M${m.number} flagged=${v.is_toxic}`);
   const proj = db.projects.find((x) => x.id === m.project_id)!;

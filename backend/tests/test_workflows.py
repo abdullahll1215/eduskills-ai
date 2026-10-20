@@ -309,3 +309,10 @@ def test_work_project_team_members(client):
     assert all(p["id"] != wp for p in client.get("/api/student/work-projects", headers=member).json())
     outsider = login(client, "ali@student.kfu.edu.sa")
     assert client.get(f"/api/student/work-projects/{wp}", headers=outsider).status_code == 404
+
+
+def test_peer_evaluation_without_comment(client):
+    h = login(client, "majed@student.kfu.edu.sa")
+    target = next(t for t in client.get("/api/student/evaluation-targets", headers=h).json() if t["status"] == "available")
+    r = client.post("/api/student/peer-evaluations", headers=h, json={"target_id": target["id"], "ratings": _ratings(client, h, 4)})
+    assert r.status_code == 201 and r.json()["flagged"] is False

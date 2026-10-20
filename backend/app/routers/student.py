@@ -322,7 +322,8 @@ def submit_peer_evaluation(
         raise HTTPException(409, "You have already evaluated this student in the current evaluation period")
 
     comment = body.comment.strip()
-    verdict = ai_engine.moderate(db, comment)  # UC-02 step 5: AI content filter
+    # UC-02 step 5: AI content filter (the written comment is optional)
+    verdict = ai_engine.moderate(db, comment) if comment else nlp.FilterResult(False, None, True)
     ev = Evaluation(
         project_id=m.project_id,
         milestone_id=m.id,
@@ -330,8 +331,8 @@ def submit_peer_evaluation(
         target_id=body.target_id,
         eval_type=EvalType.PEER.value,
         reviewer_key=key,
-        comment_enc=encrypt(comment),
-        sentiment=nlp.sentiment(comment),
+        comment_enc=encrypt(comment) if comment else None,
+        sentiment=nlp.sentiment(comment) if comment else None,
         is_flagged=verdict.is_toxic,
         flag_reason=verdict.reason,
         moderation_status=Moderation.PENDING.value if verdict.is_toxic else Moderation.NONE.value,

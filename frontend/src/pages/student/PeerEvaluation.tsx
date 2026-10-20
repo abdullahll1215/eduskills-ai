@@ -208,12 +208,11 @@ export default function PeerEvaluation() {
           </div>
 
           <div className="mt-4 border-t border-slate-100 pt-5">
-            <h3 className="font-semibold text-slate-900">{t("Qualitative Feedback")}</h3>
+            <h3 className="font-semibold text-slate-900">{t("Qualitative Feedback (optional)")}</h3>
             <p className="mb-2 text-xs text-slate-500">{t("Provide constructive examples of the student's performance.")}</p>
             <textarea
               className="input min-h-[110px]"
               value={comment}
-              required
               onChange={(e) => setComment(e.target.value)}
               placeholder={t("e.g., Ahmed is great at organizing meetings, but sometimes struggles to accept alternative ideas...")}
             />

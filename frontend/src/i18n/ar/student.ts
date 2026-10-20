@@ -263,5 +263,6 @@ const dict: Record<string, string> = {
   "You + {n} students": "أنت + {n} طلاب",
   "Shared by {name}": "مشاركة من {name}",
   "Add student to a project": "إضافة طالب إلى مشروع",
+  "Qualitative Feedback (optional)": "التقييم النوعي (اختياري)",
 };
 export default dict;
