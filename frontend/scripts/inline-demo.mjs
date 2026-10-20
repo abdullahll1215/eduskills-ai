@@ -14,7 +14,7 @@ const html = `<meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
 <style>${css}
-html,body{background:#f8f7fc;color:#0f172a}</style>
+html,body{background:#f5f5ef;color:#0f172a}</style>
 <div id="root"></div>
 <script type="module">${js}</script>
 `;

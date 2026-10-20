@@ -1,6 +1,6 @@
 # EduSkills visual refresh
 
-The interface uses an academic notebook direction: soft lavender-white surfaces, deep purple navigation with a violet accent (the team chose purple over the original dark green), restrained typography, section rules and numbered task paths. Custom vector artwork illustrates the actual assessment sources (self, peers, instructor), rather than displaying fictional scores. Brand geometry is shared between the sidebar, authentication screens and favicon.
+The interface uses an academic notebook direction: warm ivory surfaces, dark green navigation, restrained typography, section rules and numbered task paths. Custom vector artwork illustrates the actual assessment sources (self, peers, instructor), rather than displaying fictional scores. Brand geometry is shared between the sidebar, authentication screens and favicon.
 
 ## Scope
 

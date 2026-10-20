@@ -85,7 +85,7 @@ export default function AdminHealth() {
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="events" name={t("Events")} stroke="#7c3aed" fill="#dfd8ea" />
+                  <Area type="monotone" dataKey="events" name={t("Events")} stroke="#176b55" fill="#d8eadd" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
