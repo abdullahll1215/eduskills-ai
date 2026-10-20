@@ -46,7 +46,8 @@ export function defaultWorkProject(db: DemoDB, studentId: string, projectId: str
   const name = course?.title ?? "My project";
   let wp = db.work_projects.find((w) => w.student_id === studentId && w.name === name);
   if (!wp) {
-    wp = { id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36), student_id: studentId, name, description: course?.description ?? null, url: null, created_at: course?.created_at ?? new Date().toISOString() };
+    const stages = Math.max(1, db.milestones.filter((m) => m.project_id === projectId).length);
+    wp = { id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36), student_id: studentId, name, description: course?.description ?? null, url: null, stages, created_at: course?.created_at ?? new Date().toISOString() };
     db.work_projects.push(wp);
   }
   return wp;

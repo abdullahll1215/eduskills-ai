@@ -87,6 +87,7 @@ class WorkProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
     url: str | None = Field(None, max_length=500)
+    stages: int = Field(1, ge=1, le=10)
 
 
 class ArtifactIn(BaseModel):

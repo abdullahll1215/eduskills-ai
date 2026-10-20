@@ -22,6 +22,7 @@ interface WorkProject {
   name: string;
   description: string | null;
   url: string | null;
+  stages: number;
   created_at: string;
   updated_at: string;
   file_count: number;
@@ -57,6 +58,7 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
+  const [stages, setStages] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -64,7 +66,7 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
     e.preventDefault();
     setBusy(true);
     try {
-      onCreated(await api<WorkProject>("/api/student/work-projects", { body: { name, description, url: url.trim() || null } }));
+      onCreated(await api<WorkProject>("/api/student/work-projects", { body: { name, description, url: url.trim() || null, stages } }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -86,6 +88,24 @@ function ProjectForm({ onCreated }: { onCreated: (wp: WorkProject) => void }) {
       <div>
         <label className="label">{t("Project link (optional)")}</label>
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/team/repo" />
+      </div>
+      <div>
+        <label className="label">{t("Number of stages")}</label>
+        <p className="mb-2 text-xs text-slate-500">{t("How many stages will you complete this project in?")}</p>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Number of stages")}>
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={stages === n}
+              onClick={() => setStages(n)}
+              className={`h-9 w-9 rounded-lg border text-sm font-semibold transition ${stages === n ? "border-brand-600 bg-brand-600 text-white" : "border-slate-200 text-slate-600 hover:border-brand-300 hover:bg-brand-50"}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
       <button className="btn-primary w-full" disabled={busy}><FolderPlus className="h-4 w-4" /> {t("Add project")}</button>
     </form>
@@ -237,6 +257,7 @@ function ProjectDetail({ id, onBack, onChanged }: { id: string; onBack?: () => v
           </div>
           {data.description && <p className="mt-4 whitespace-pre-line text-sm text-slate-600">{data.description}</p>}
           <dl className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
+            <div className="flex justify-between"><dt className="text-slate-500">{t("Stages")}</dt><dd className="font-semibold text-slate-800">{data.stages}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">{t("Files")}</dt><dd className="font-semibold text-slate-800">{data.file_count}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">{t("Last update")}</dt><dd className="font-semibold text-slate-800">{fmtDate(data.updated_at)}</dd></div>
           </dl>
@@ -286,6 +307,7 @@ function ProjectCard({ wp, onOpen }: { wp: WorkProject; onOpen: () => void }) {
       <div className="mt-4 font-semibold text-slate-900">{wp.name}</div>
       <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-slate-500">{wp.description || t("No description")}</p>
       <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
+        {wp.stages === 1 ? t("1 stage") : wp.stages === 2 ? t("2 stages") : t("{n} stages", { n: wp.stages })} ·{" "}
         {wp.file_count === 1
           ? t("1 file · Updated {date}", { date: fmtDate(wp.updated_at) })
           : t("{n} files · Updated {date}", { n: wp.file_count, date: fmtDate(wp.updated_at) })}

@@ -232,8 +232,10 @@ def test_work_projects(client):
     projects = client.get("/api/student/work-projects", headers=h).json()
     # Seeded artifacts are grouped under the course project
     assert len(projects) == 1 and projects[0]["file_count"] >= 4
-    r = client.post("/api/student/work-projects", headers=h, json={"name": "Mobile app", "description": "Flutter app", "url": "https://github.com/x/y"})
-    assert r.status_code == 201 and r.json()["files"] == []
+    r = client.post("/api/student/work-projects", headers=h, json={"name": "Mobile app", "description": "Flutter app", "url": "https://github.com/x/y", "stages": 4})
+    assert r.status_code == 201 and r.json()["files"] == [] and r.json()["stages"] == 4
+    assert projects[0]["stages"] == 3  # the course project's three milestones
+    assert client.post("/api/student/work-projects", headers=h, json={"name": "Too long", "stages": 11}).status_code == 422
     wp = r.json()["id"]
     assert client.post("/api/student/work-projects", headers=h, json={"name": "Bad", "url": "github.com"}).status_code == 422
     m3 = _active(_project(client, h))

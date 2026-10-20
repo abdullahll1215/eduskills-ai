@@ -365,7 +365,7 @@ const ownWorkProject = (db: DemoDB, user: any, id: string) => {
 };
 const workProjectOut = (db: DemoDB, wp: any, withFiles = false) => {
   const files = db.artifacts.filter((a) => a.work_project_id === wp.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  return { ...wp, file_count: files.length, updated_at: files[0]?.created_at ?? wp.created_at, ...(withFiles ? { files } : {}) };
+  return { ...wp, stages: wp.stages ?? 1, file_count: files.length, updated_at: files[0]?.created_at ?? wp.created_at, ...(withFiles ? { files } : {}) };
 };
 route("GET", "/api/student/work-projects", ({ db, user }) =>
   db.work_projects.filter((w) => w.student_id === user.id).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((w) => workProjectOut(db, w)));
@@ -373,7 +373,9 @@ route("POST", "/api/student/work-projects", ({ db, user, body }) => {
   const name = String(body.name ?? "").trim();
   if (!name) fail(422, "Project name is required");
   if (body.url && !/^https?:\/\//i.test(body.url)) fail(422, "The project link must start with http:// or https://");
-  const wp = { id: uid(), student_id: user.id, name, description: String(body.description ?? "").trim() || null, url: body.url || null, created_at: nowIso() };
+  const stages = Number(body.stages ?? 1);
+  if (!Number.isInteger(stages) || stages < 1 || stages > 10) fail(422, "The number of stages must be between 1 and 10");
+  const wp = { id: uid(), student_id: user.id, name, description: String(body.description ?? "").trim() || null, url: body.url || null, stages, created_at: nowIso() };
   db.work_projects.push(wp);
   return workProjectOut(db, wp, true);
 });

@@ -42,6 +42,15 @@ def _upgrade_schema():
     if "work_project_id" not in {c["name"] for c in inspect(engine).get_columns("artifacts")}:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE artifacts ADD COLUMN work_project_id VARCHAR(36) REFERENCES work_projects(id) ON DELETE CASCADE"))
+    if "stages" not in {c["name"] for c in inspect(engine).get_columns("work_projects")}:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE work_projects ADD COLUMN stages INTEGER NOT NULL DEFAULT 1"))
+            # Projects named after a course project take that project's number of milestones.
+            conn.execute(text(
+                "UPDATE work_projects SET stages = (SELECT COUNT(*) FROM milestones m JOIN projects p ON p.id = m.project_id"
+                " WHERE p.title = work_projects.name) WHERE EXISTS (SELECT 1 FROM projects p JOIN milestones m ON m.project_id = p.id"
+                " WHERE p.title = work_projects.name)"
+            ))
     with SessionLocal() as db:
         assign_orphan_artifacts(db)
 

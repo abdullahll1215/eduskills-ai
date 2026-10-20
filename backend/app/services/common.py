@@ -12,7 +12,8 @@ def default_work_project(db: Session, student_id: str, project_id: str) -> WorkP
     name = course.title if course else "My project"
     wp = db.scalar(select(WorkProject).where(WorkProject.student_id == student_id, WorkProject.name == name))
     if wp is None:
-        wp = WorkProject(student_id=student_id, name=name, description=course.description if course else None)
+        stages = len(course.milestones) if course else 1
+        wp = WorkProject(student_id=student_id, name=name, description=course.description if course else None, stages=max(1, stages))
         db.add(wp)
         db.flush()
     return wp

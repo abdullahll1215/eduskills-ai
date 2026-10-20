@@ -258,6 +258,7 @@ class WorkProject(Base):
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    stages: Mapped[int] = mapped_column(Integer, default=1)  # how many stages the student plans the project in
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

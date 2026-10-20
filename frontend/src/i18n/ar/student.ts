@@ -232,5 +232,11 @@ const dict: Record<string, string> = {
   "Your projects and their files. File metadata (commit logs, submission times) is used as objective behavioral evidence; content is never graded.": "مشاريعك وملفاتها. تُستخدم البيانات الوصفية للملفات (سجلات الإيداع وأوقات التسليم) كدليل سلوكي موضوعي، ولا يُقيَّم المحتوى نفسه أبدًا.",
   "Add your first project": "أضف مشروعك الأول",
   "Create a project, then add its commit logs, deliverables and links.": "أنشئ مشروعًا، ثم أضف سجلات الإيداع والمُخرَجات والروابط الخاصة به.",
+  "Number of stages": "عدد المراحل",
+  "How many stages will you complete this project in?": "كم مرحلة بتنجز فيها هذا المشروع؟",
+  "Stages": "المراحل",
+  "1 stage": "مرحلة واحدة",
+  "2 stages": "مرحلتان",
+  "{n} stages": "{n} مراحل",
 };
 export default dict;

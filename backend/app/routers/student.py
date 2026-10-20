@@ -606,7 +606,7 @@ def _own_work_project(db: Session, user: User, wp_id: str) -> WorkProject:
 def _work_project_out(db: Session, wp: WorkProject, with_files: bool = False) -> dict:
     files = db.scalars(select(Artifact).where(Artifact.work_project_id == wp.id).order_by(Artifact.created_at.desc())).all()
     out = {
-        "id": wp.id, "name": wp.name, "description": wp.description, "url": wp.url, "created_at": wp.created_at,
+        "id": wp.id, "name": wp.name, "description": wp.description, "url": wp.url, "stages": wp.stages or 1, "created_at": wp.created_at,
         "file_count": len(files), "updated_at": files[0].created_at if files else wp.created_at,
     }
     if with_files:
@@ -624,7 +624,7 @@ def list_work_projects(user: User = Depends(student_only), db: Session = Depends
 def add_work_project(body: WorkProjectIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     if body.url and not body.url.lower().startswith(("http://", "https://")):
         raise HTTPException(422, "The project link must start with http:// or https://")
-    wp = WorkProject(student_id=user.id, name=body.name.strip(), description=(body.description or "").strip() or None, url=body.url or None)
+    wp = WorkProject(student_id=user.id, name=body.name.strip(), description=(body.description or "").strip() or None, url=body.url or None, stages=body.stages)
     db.add(wp)
     audit.log(db, user, "work_project.added", "work_project", wp.id, wp.name)
     db.commit()
