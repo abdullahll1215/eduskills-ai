@@ -41,6 +41,7 @@ const NAV: Record<string, { portal: string; items: NavItem[] }> = {
       { to: "/student/report", label: "AI Growth Report", icon: <FileText className={ic} /> },
       { to: "/student/feedback", label: "360° Feedback", icon: <MessageCircle className={ic} /> },
       { to: "/student/artifacts", label: "My Projects", icon: <FolderKanban className={ic} /> },
+      { to: "/student/team", label: "My Team", icon: <Users className={ic} /> },
       { to: "/student/coach", label: "AI Coach", icon: <Activity className={ic} /> },
     ],
   },

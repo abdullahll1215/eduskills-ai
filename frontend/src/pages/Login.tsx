@@ -187,7 +187,7 @@ function SignupForm({ onDone, onCancel }: { onDone: (role: string) => void; onCa
   return (
     <>
       <h2 className="text-2xl font-bold text-slate-900">{t("Create a student account")}</h2>
-      <p className="mt-1 text-sm text-slate-500">{t("After signing up you can join your team with an invite code or create a new one.")}</p>
+      <p className="mt-1 text-sm text-slate-500">{t("Start exploring and assess yourself after signing up. Joining a team is optional.")}</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         {error && <Alert kind="error">{error}</Alert>}
         <div>

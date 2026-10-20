@@ -1,5 +1,6 @@
 import { Check, Copy, KeyRound, Loader2, UsersRound } from "lucide-react";
-import { FormEvent, ReactNode, useState } from "react";
+import { FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { Alert, Loading, PageHeader, useFetch } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -128,7 +129,7 @@ function TeamSetup({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title={t("Join your project team")} subtitle={t("You need a team before you can assess yourself and your teammates.")} />
+      <PageHeader title={t("Join your project team")} subtitle={t("Joining a team is optional. You can explore and assess yourself without a course code. Team membership is required only to evaluate teammates.")} />
       <div className="grid gap-5 md:grid-cols-2">
         <JoinCard onJoined={onDone} />
         <CreateCard onCreated={setCreated} />
@@ -137,13 +138,18 @@ function TeamSetup({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Pages that need a course show team setup first when the student is not in any course yet. */
-export default function TeamGate({ children }: { children: ReactNode }) {
-  const { data, loading, error, reload } = useFetch(() => api<MyTeam[]>("/api/student/team"));
+/** Optional membership management; never gates access to other student features. */
+export default function TeamPage() {
+  const t = useT();
+  const navigate = useNavigate();
+  const { data, loading, error } = useFetch(() => api<MyTeam[]>("/api/student/team"));
   if (loading && !data) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
-  if (!data?.length) return <TeamSetup onDone={reload} />;
-  return <>{children}</>;
+  return <div className="space-y-6">
+    <TeamStrip />
+    <TeamSetup onDone={() => navigate("/student")} />
+    <Link className="btn-ghost" to="/student">{t("Continue exploring")}</Link>
+  </div>;
 }
 
 /** The student's team with its invite code, so classmates can be invited at any time. */
@@ -151,7 +157,7 @@ export function TeamStrip() {
   const t = useT();
   const { data } = useFetch(() => api<MyTeam[]>("/api/student/team"));
   const mine = data?.find((d) => d.team);
-  if (!mine?.team) return null;
+  if (!mine?.team) return <Link className="btn-outline" to="/student/team">{t("Join or create a team (optional)")}</Link>;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-100 bg-brand-50/60 px-5 py-3">
       <div className="flex items-center gap-3">

@@ -72,7 +72,7 @@ export default function AdminSettings() {
           <div><label className="label">{t("Min. peer evaluations")}</label><input type="number" min="1" className="input" value={form.min_peer_evaluations ?? ""} onChange={(e) => set("min_peer_evaluations", e.target.value)} /></div>
           <div><label className="label">{t("Data retention (days)")}</label><input type="number" min="30" className="input" value={form.retention_days ?? ""} onChange={(e) => set("retention_days", e.target.value)} /></div>
           <label className="mt-6 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.require_self_before_peer === "true"} onChange={(e) => set("require_self_before_peer", String(e.target.checked))} /> {t("Require self-assessment before peer review")}</label>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.public_feedback_profiles === "true"} onChange={(e) => set("public_feedback_profiles", String(e.target.checked))} /> {t("Let students search other students and read their anonymous feedback")}</label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.public_feedback_profiles === "true"} onChange={(e) => set("public_feedback_profiles", String(e.target.checked))} /> {t("Let students search profiles and view released score summaries")}</label>
         </div>
         {Math.abs(wI + wP - 1) > 0.001 && <p className="mt-2 text-xs text-red-600">{t("Weights must add up to 1.0")}</p>}
         <div className="mt-5 flex justify-end"><button className="btn-primary">{t("Apply scoring configuration")}</button></div>

@@ -152,6 +152,15 @@ class Competency(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class PersonalSelfAssessment(Base):
+    """Private practice ratings, independent of course enrollment and formal 360 reports."""
+    __tablename__ = "personal_self_assessments"
+
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    ratings: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Evaluation(Base):
     __tablename__ = "evaluations"
     __table_args__ = (UniqueConstraint("milestone_id", "target_id", "eval_type", "reviewer_key"),)

@@ -267,21 +267,18 @@ def test_work_projects(client):
     assert len(client.get("/api/student/work-projects", headers=h).json()) == 1
 
 
-def test_evaluate_any_student_on_platform(client):
+def test_students_outside_team_are_view_only(client):
     h = login(client, "omar@student.kfu.edu.sa")
     targets = client.get("/api/student/evaluation-targets", headers=h).json()
     me = client.get("/api/auth/me", headers=h).json()
     assert targets and all(t["id"] != me["id"] for t in targets)
     mates = [t for t in targets if t["is_teammate"]]
-    assert mates and targets[: len(mates)] == mates  # teammates first
-    other = next(t for t in targets if not t["is_teammate"] and t["status"] == "available")
-    ratings = _ratings(client, h, 4)
-    body = {"target_id": other["id"], "ratings": ratings, "comment": "Very clear presenter in the joint review session and always shares useful resources."}
-    r = client.post("/api/student/peer-evaluations", headers=h, json=body)
-    assert r.status_code == 201, r.text
-    assert client.post("/api/student/peer-evaluations", headers=h, json=body).status_code == 409
-    again = client.get("/api/student/evaluation-targets", headers=h, params={"q": other["full_name"]}).json()
-    assert again[0]["status"] == "evaluated"
+    assert mates and targets[:len(mates)] == mates
+    other = next(t for t in targets if not t["is_teammate"])
+    assert other["status"] == "view_only"
+    r = client.post("/api/student/peer-evaluations", headers=h,
+        json={"target_id": other["id"], "ratings": _ratings(client, h, 4)})
+    assert r.status_code == 403
 
 
 def test_report_in_arabic(client, khalid):
@@ -326,7 +323,14 @@ def test_work_project_team_members(client):
 
 
 def test_peer_evaluation_without_comment(client):
-    h = login(client, "majed@student.kfu.edu.sa")
+    h = _new_student(client, "optional.comment@example.com")
+    staff = login(client, "ahmed@kfu.edu.sa")
+    pid = client.get("/api/instructor/projects", headers=staff).json()[0]["id"]
+    teams = client.get(f"/api/projects/{pid}", headers=staff).json()["teams"]
+    omar = login(client, "omar@student.kfu.edu.sa")
+    team_id = client.get("/api/student/team", headers=omar).json()[0]["team"]["id"]
+    code = next(t["invite_code"] for t in teams if t["id"] == team_id)
+    assert client.post("/api/student/team/join", headers=h, json={"code": code}).status_code == 200
     target = next(t for t in client.get("/api/student/evaluation-targets", headers=h).json() if t["status"] == "available")
     r = client.post("/api/student/peer-evaluations", headers=h, json={"target_id": target["id"], "ratings": _ratings(client, h, 4)})
     assert r.status_code == 201 and r.json()["flagged"] is False

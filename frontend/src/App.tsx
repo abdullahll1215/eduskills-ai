@@ -23,7 +23,7 @@ import Feedback from "./pages/student/Feedback";
 import GrowthReport from "./pages/student/GrowthReport";
 import PeerEvaluation from "./pages/student/PeerEvaluation";
 import SelfAssessment from "./pages/student/SelfAssessment";
-import TeamGate from "./pages/student/TeamSetup";
+import TeamPage from "./pages/student/TeamSetup";
 
 function Guard({ roles, children }: { roles?: string[]; children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -44,11 +44,12 @@ export default function App() {
       <Route element={<Guard><Layout /></Guard>}>
         <Route path="/profile" element={<Profile />} />
 
-        <Route path="/student" element={<Guard roles={["student"]}><TeamGate><Dashboard /></TeamGate></Guard>} />
-        <Route path="/student/self-assessment" element={<Guard roles={["student"]}><TeamGate><SelfAssessment /></TeamGate></Guard>} />
-        <Route path="/student/peers" element={<Guard roles={["student"]}><TeamGate><PeerEvaluation /></TeamGate></Guard>} />
-        <Route path="/student/report" element={<Guard roles={["student"]}><TeamGate><GrowthReport /></TeamGate></Guard>} />
-        <Route path="/student/feedback" element={<Guard roles={["student"]}><TeamGate><Feedback /></TeamGate></Guard>} />
+        <Route path="/student" element={<Guard roles={["student"]}><Dashboard /></Guard>} />
+        <Route path="/student/team" element={<Guard roles={["student"]}><TeamPage /></Guard>} />
+        <Route path="/student/self-assessment" element={<Guard roles={["student"]}><SelfAssessment /></Guard>} />
+        <Route path="/student/peers" element={<Guard roles={["student"]}><PeerEvaluation /></Guard>} />
+        <Route path="/student/report" element={<Guard roles={["student"]}><GrowthReport /></Guard>} />
+        <Route path="/student/feedback" element={<Guard roles={["student"]}><Feedback /></Guard>} />
         <Route path="/student/artifacts" element={<Guard roles={["student"]}><Artifacts /></Guard>} />
         <Route path="/student/coach" element={<Guard roles={["student"]}><Coach /></Guard>} />
 

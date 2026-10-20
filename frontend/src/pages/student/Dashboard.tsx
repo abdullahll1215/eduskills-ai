@@ -39,7 +39,20 @@ export default function Dashboard() {
 
   if (loading) return <Loading />;
   if (error) return <Alert kind="error">{error}</Alert>;
-  if (!data?.project) return <Empty title={t("You are not enrolled in a project yet")}>{t("Ask your instructor to add you to a project team.")}</Empty>;
+  if (!data?.project) return <div className="space-y-6">
+    <PageHeader title={t("Explore your skills")} subtitle={t("Start with yourself. Joining a course or team is optional.")} />
+    <div className="card space-y-4 p-6">
+      <h2 className="text-lg font-semibold">{t("Personal self-assessment")}</h2>
+      <p className="text-sm text-slate-600">{t("Assess your own skills privately, without a course or team. Personal ratings are separate from your course assessment.")}</p>
+      <Link className="btn-primary" to="/student/self-assessment">{t("Start now")}</Link>
+    </div>
+    <div className="flex flex-wrap gap-3">
+      <Link className="btn-outline" to="/student/feedback">{t("Explore student feedback")}</Link>
+      <Link className="btn-outline" to="/student/artifacts">{t("My Projects")}</Link>
+      <Link className="btn-outline" to="/student/coach">{t("AI Coach")}</Link>
+    </div>
+    <TeamStrip />
+  </div>;
 
   const latest = data.latest;
   const blindSpots = latest?.metrics.filter((m) => m.level !== "ALIGNED").sort((a, b) => b.gap - a.gap) ?? [];
