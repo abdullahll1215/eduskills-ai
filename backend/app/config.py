@@ -1,22 +1,27 @@
 """Application configuration loaded from environment variables (or a .env file)."""
-import hashlib
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore", populate_by_name=True)
 
     app_name: str = "EduSkills AI"
-    environment: str = "development"
+    environment: str = "production" if os.environ.get("VERCEL") else "development"
 
     # Database: SQLite by default, any SQLAlchemy URL (e.g. PostgreSQL) in production.
-    database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'eduskills.db'}"
+    database_url: str = Field(default=f"sqlite:///{BASE_DIR / 'data' / 'eduskills.db'}",
+        validation_alias=AliasChoices("DATABASE_URL", "POSTGRES_URL", "STORAGE_URL", "POSTGRES_URL_NON_POOLING", "DATABASE_URL_UNPOOLED"))
+    database_schema: str = ""
+    auto_migrate: bool = False
 
     # Security
     secret_key: str = "change-me-in-production-please-use-a-long-random-string"
@@ -36,7 +41,28 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     backup_dir: Path = BASE_DIR / "data" / "backups"
-    seed_demo_data: bool = True
+    seed_demo_data: bool = False
+
+    @model_validator(mode="after")
+    def validate_deployment(self):
+        self.database_url = _normalise_db_url(self.database_url)
+        if self.database_schema and not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", self.database_schema):
+            raise ValueError("DATABASE_SCHEMA must be a valid lowercase SQL identifier")
+        if self.environment == "production":
+            if not self.database_url.startswith("postgresql"):
+                raise ValueError("Production requires an explicit PostgreSQL DATABASE_URL")
+            if self.seed_demo_data:
+                raise ValueError("Demo accounts must not be seeded in production")
+            for name, default in (("secret_key", "change-me-in-production-please-use-a-long-random-string"),
+                                  ("anonymization_salt", "eduskills-peer-salt")):
+                value = getattr(self, name)
+                if len(value) < 32 or value == default or value.startswith("change-me"):
+                    raise ValueError(f"Production requires an independent, strong {name.upper()}")
+            try:
+                Fernet(self.encryption_key.encode())
+            except (ValueError, TypeError) as exc:
+                raise ValueError("Production requires a valid independent ENCRYPTION_KEY") from exc
+        return self
 
 
 ON_VERCEL = bool(os.environ.get("VERCEL"))
@@ -54,26 +80,6 @@ def _normalise_db_url(url: str) -> str:
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    # Vercel's Postgres (Neon) integration exposes the connection string under these names.
-    for name in ("DATABASE_URL", "POSTGRES_URL", "STORAGE_URL", "POSTGRES_URL_NON_POOLING", "DATABASE_URL_UNPOOLED"):
-        if os.environ.get(name):
-            s.database_url = os.environ[name]
-            break
-    else:
-        if ON_VERCEL:
-            # Read-only file system: fall back to a temporary SQLite file (data resets on cold starts).
-            s.database_url = "sqlite:////tmp/eduskills.db"
-    s.database_url = _normalise_db_url(s.database_url)
-    defaults = Settings.model_fields
-    if ON_VERCEL and not s.database_url.startswith("sqlite"):
-        # The repository is public, so the built-in secrets must never be used in production.
-        # Unless SECRET_KEY / ANONYMIZATION_SALT are set, derive stable private values from the
-        # database credentials, which only the Vercel project knows.
-        seed_value = hashlib.sha256(("eduskills:" + s.database_url).encode()).hexdigest()
-        if s.secret_key == defaults["secret_key"].default:
-            s.secret_key = seed_value
-        if s.anonymization_salt == defaults["anonymization_salt"].default:
-            s.anonymization_salt = hashlib.sha256((seed_value + ":salt").encode()).hexdigest()
     if ON_VERCEL:
         s.backup_dir = Path("/tmp/eduskills-backups")
     return s

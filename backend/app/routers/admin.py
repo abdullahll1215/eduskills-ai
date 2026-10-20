@@ -1,8 +1,9 @@
 """System administration (UC-08): users, configuration, AI parameters, health, backups, retention, audit."""
+import math
 import time
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,8 @@ from ..security import hash_password
 from ..services import ai_engine, audit, backup
 from ..services.common import competency_out, get_or_404, user_out
 from ..services.settings_store import DEFAULTS, ai_config, get_raw, public_settings, set_value
+from ..services.report_state import lock_student_milestone
+from .student import run_job, trigger_report
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 STARTED_AT = time.time()
@@ -102,23 +105,29 @@ def update_settings(body: SettingsIn, admin: User = Depends(admin_only), db: Ses
         raise HTTPException(422, f"Unknown settings: {', '.join(sorted(unknown))}")
     numeric = {"instructor_weight", "peer_weight", "moderate_threshold", "critical_threshold", "instructor_peer_warning"}
     for k in numeric & set(vals):
+        maximum = 1 if k in {"instructor_weight", "peer_weight"} else 4
         try:
-            if float(vals[k]) < 0:
+            value = float(vals[k])
+            if not math.isfinite(value) or not 0 <= value <= maximum:
                 raise ValueError
         except ValueError:
-            raise HTTPException(422, f"{k} must be a non-negative number")
+            raise HTTPException(422, f"{k} must be a finite number between 0 and {maximum}")
     w_i = float(vals.get("instructor_weight", get_raw(db, "instructor_weight")))
     w_p = float(vals.get("peer_weight", get_raw(db, "peer_weight")))
     if abs(w_i + w_p - 1) > 1e-6:
         raise HTTPException(422, "Instructor and peer weights must add up to 1.0")
     mod = float(vals.get("moderate_threshold", get_raw(db, "moderate_threshold")))
     crit = float(vals.get("critical_threshold", get_raw(db, "critical_threshold")))
-    if crit < mod:
+    if crit <= mod:
         raise HTTPException(422, "The critical threshold must be greater than the moderate threshold")
     if vals.get("ai_base_url") and not vals["ai_base_url"].startswith(("https://", "http://")):
         raise HTTPException(422, "The API base URL must start with https:// - did you paste the API key in the wrong field?")
-    if "min_peer_evaluations" in vals and not vals["min_peer_evaluations"].isdigit():
-        raise HTTPException(422, "min_peer_evaluations must be a whole number")
+    for name, maximum in (("min_peer_evaluations", 100), ("retention_days", 3650)):
+        if name in vals and (not vals[name].isdigit() or not 1 <= int(vals[name]) <= maximum):
+            raise HTTPException(422, f"{name} must be a whole number between 1 and {maximum}")
+    for name in {"public_feedback_profiles", "ai_enabled", "require_self_before_peer"} & vals.keys():
+        if vals[name] not in {"true", "false"}:
+            raise HTTPException(422, f"{name} must be true or false")
     for k, v in vals.items():
         if k == "ai_api_key" and (not v or v.startswith("•")):
             continue  # masked value sent back unchanged
@@ -200,11 +209,14 @@ def unlock_evaluation(evaluation_id: str, admin: User = Depends(admin_only), db:
 
 
 @router.delete("/evaluations/{evaluation_id}")
-def delete_evaluation(evaluation_id: str, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+def delete_evaluation(evaluation_id: str, bg: BackgroundTasks, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     ev = get_or_404(db, Evaluation, evaluation_id, "Evaluation")
+    target_id, milestone_id = ev.target_id, ev.milestone_id
+    lock_student_milestone(db, target_id, milestone_id)
     db.delete(ev)
     audit.log(db, admin, "evaluation.deleted", "evaluation", evaluation_id, ev.eval_type)
     db.commit()
+    run_job(bg, trigger_report, target_id, milestone_id, True)
     return {"ok": True}
 
 

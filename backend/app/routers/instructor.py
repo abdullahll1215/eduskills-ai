@@ -37,6 +37,7 @@ from ..services.common import (
 )
 from ..services.settings_store import scoring
 from .student import _report_out, run_job, trigger_report
+from ..services.report_state import is_current, lock_student_milestone
 
 router = APIRouter(prefix="/api/instructor", tags=["instructor"])
 
@@ -86,6 +87,8 @@ def _cohort_rows(db: Session, project: Project, m: Milestone) -> list[dict]:
     for student, enr in students_of_project(db, project.id):
         snap = analytics.snapshot(db, student.id, m.id, cfg)
         report = db.scalar(select(AIReport).where(AIReport.student_id == student.id, AIReport.milestone_id == m.id))
+        if report and not is_current(db, report):
+            report = None
         if report:
             gap, level = report.overall_gap, report.overall_level
             max_gap = max((d.gap_score for d in report.metrics), default=0)
@@ -199,6 +202,8 @@ def student_detail(
     ).all()
     arts = db.scalars(select(Artifact).where(Artifact.student_id == student.id, Artifact.milestone_id == m.id)).all()
     report = db.scalar(select(AIReport).where(AIReport.student_id == student.id, AIReport.milestone_id == m.id))
+    if report and not is_current(db, report):
+        report = None
     history = db.scalars(
         select(AIReport).join(Milestone, AIReport.milestone_id == Milestone.id)
         .where(AIReport.student_id == student.id, AIReport.project_id == project.id).order_by(Milestone.number)
@@ -231,7 +236,7 @@ def student_detail(
         if not inst
         else {"ratings": {r.competency_id: r.score for r in inst.ratings}, "notes": decrypt(inst.notes_enc), "created_at": inst.created_at, "is_locked": inst.is_locked},
         "report": _report_out(report) if report else None,
-        "history": [{"milestone": f"M{r.milestone.number}", "self": r.overall_self, "external": r.overall_external, "gap": r.overall_gap, "level": r.overall_level} for r in history],
+        "history": [{"milestone": f"M{r.milestone.number}", "self": r.overall_self, "external": r.overall_external, "gap": r.overall_gap, "level": r.overall_level} for r in history if is_current(db, r)],
         "warning_threshold": cfg.instructor_peer_warning,
     }
 
@@ -242,6 +247,7 @@ def submit_instructor_evaluation(
 ):
     m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
     project = _project(db, user, m.project_id)
+    lock_student_milestone(db, body.target_id, m.id)
     if m.status == "planned":
         raise HTTPException(409, "This milestone has not started yet")
     if not any(s.id == body.target_id for s, _ in students_of_project(db, project.id)):
@@ -292,6 +298,7 @@ def submit_instructor_evaluation(
 @router.post("/moderation/{evaluation_id}")
 def moderate(evaluation_id: str, body: ModerationIn, bg: BackgroundTasks, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     ev = get_or_404(db, Evaluation, evaluation_id, "Evaluation")
+    lock_student_milestone(db, ev.target_id, ev.milestone_id)
     _project(db, user, ev.project_id)
     if ev.eval_type != EvalType.PEER.value:
         raise HTTPException(400, "Only peer feedback can be moderated")
@@ -348,7 +355,7 @@ def cohort_report(project_id: str, user: User = Depends(instructor_only), db: Se
     comps = analytics.competencies(db)
     by_milestone = []
     for m in project.milestones:
-        reports = db.scalars(select(AIReport).where(AIReport.milestone_id == m.id)).all()
+        reports = [r for r in db.scalars(select(AIReport).where(AIReport.milestone_id == m.id)) if is_current(db, r)]
         if not reports:
             continue
         skills = {}

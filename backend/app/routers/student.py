@@ -30,6 +30,7 @@ from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
 from ..services.common import competency_out, default_work_project, enrollment_of, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
+from ..services.report_state import is_current, lock_student_milestone
 
 router = APIRouter(prefix="/api/student", tags=["student"])
 
@@ -60,8 +61,8 @@ def trigger_report(student_id: str, milestone_id: str, force: bool = False):
     """Background job: UC-04 blind spot detection then UC-05 narrative generation."""
     db = SessionLocal()
     try:
-        if ai_engine.generate_report(db, student_id, milestone_id, force=force):
-            db.commit()
+        ai_engine.generate_report(db, student_id, milestone_id, force=force)
+        db.commit()
     finally:
         db.close()
 
@@ -81,6 +82,7 @@ def _milestone_status(db: Session, user: User, enr: Enrollment, m: Milestone) ->
         )
     }
     report = db.scalar(select(AIReport.id).where(AIReport.student_id == user.id, AIReport.milestone_id == m.id))
+    given.intersection_update(t.id for t in mates)
     parts = [
         1.0 if snap.has_self else 0.0,
         (len(given) / len(mates)) if mates else 1.0,
@@ -156,6 +158,7 @@ def submit_self_assessment(
     m = get_or_404(db, Milestone, body.milestone_id, "Milestone")
     _require_enrollment(db, user, m)
     _require_open(m)
+    lock_student_milestone(db, user.id, m.id)
     ratings = validate_ratings(db, body.ratings)
     existing = db.scalar(
         select(Evaluation).where(
@@ -224,11 +227,13 @@ def peers_to_evaluate(milestone_id: str, user: User = Depends(student_only), db:
     }
 
 
-def _open_milestone_of(db: Session, student_id: str, prefer_project: str | None = None) -> Milestone | None:
+def _open_milestone_of(db: Session, student_id: str, prefer_project: str | None = None, allowed_projects: set[str] | None = None) -> Milestone | None:
     """The evaluation period currently open for a student (their own project's first when several)."""
     projects = list(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == student_id)))
     projects.sort(key=lambda p: p != prefer_project)
     for pid in projects:
+        if allowed_projects is not None and pid not in allowed_projects:
+            continue
         m = db.scalar(select(Milestone).where(Milestone.project_id == pid, Milestone.status == "active").order_by(Milestone.number))
         if m:
             return m
@@ -255,7 +260,9 @@ def evaluation_targets(q: str = "", user: User = Depends(student_only), db: Sess
     my_enrollments = list(db.scalars(select(Enrollment).where(Enrollment.user_id == user.id)))
     my_teams = {e.team_id for e in my_enrollments if e.team_id}
     my_project = my_enrollments[0].project_id if my_enrollments else None
+    my_projects = {e.project_id for e in my_enrollments}
     query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True), User.id != user.id)
+    query = query.join(Enrollment, Enrollment.user_id == User.id).where(Enrollment.project_id.in_(my_projects)).distinct()
     if q.strip():
         like = f"%{q.strip().lower()}%"
         query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
@@ -266,7 +273,7 @@ def evaluation_targets(q: str = "", user: User = Depends(student_only), db: Sess
     rows.sort(key=lambda r: not r[2])
     out = []
     for u, enr, mate in rows[:20]:
-        m = _open_milestone_of(db, u.id, my_project)
+        m = _open_milestone_of(db, u.id, my_project, my_projects)
         out.append({
             "id": u.id,
             "full_name": u.full_name,
@@ -297,13 +304,19 @@ def submit_peer_evaluation(
         raise HTTPException(404, "Student not found")
     # Any student on the platform can be evaluated, within that student's open evaluation period.
     preferred = db.get(Milestone, body.milestone_id) if body.milestone_id else None
+    my_projects = set(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == user.id)))
+    target_projects = set(db.scalars(select(Enrollment.project_id).where(Enrollment.user_id == target.id)))
+    shared_projects = my_projects & target_projects
+    if not shared_projects or (preferred and preferred.project_id not in shared_projects):
+        raise HTTPException(403, "You may only evaluate students in a course assigned to you")
     if preferred and enrollment_of(db, target.id, preferred.project_id):
         m = preferred
     else:
-        m = _open_milestone_of(db, target.id, preferred.project_id if preferred else None)
+        m = _open_milestone_of(db, target.id, preferred.project_id if preferred else None, shared_projects)
         if m is None:
             raise HTTPException(409, "No evaluation period is open for this student right now")
     _require_open(m)
+    lock_student_milestone(db, body.target_id, m.id)
     cfg = scoring(db)
     if cfg.require_self_before_peer and not db.scalar(
         select(Evaluation.id).where(
@@ -383,6 +396,11 @@ def received_feedback(milestone_id: str, user: User = Depends(student_only), db:
     return _feedback_summary(db, user.id, m)
 
 
+def _team_ids(db: Session, student_id: str) -> set[str]:
+    return set(db.scalars(select(Enrollment.team_id).join(Project, Project.id == Enrollment.project_id)
+        .where(Enrollment.user_id == student_id, Enrollment.team_id.is_not(None), Project.is_active.is_(True))))
+
+
 def _require_public_profiles(db: Session):
     if get_raw(db, "public_feedback_profiles") != "true":
         raise HTTPException(403, "Viewing other students' feedback is turned off by the administrator")
@@ -393,6 +411,8 @@ def student_directory(q: str = "", user: User = Depends(student_only), db: Sessi
     """Search students on the platform by name or university ID."""
     _require_public_profiles(db)
     query = select(User).where(User.role == Role.STUDENT.value, User.is_active.is_(True))
+    team_ids = _team_ids(db, user.id)
+    query = query.join(Enrollment, Enrollment.user_id == User.id).where(Enrollment.team_id.in_(team_ids)).distinct()
     if q.strip():
         like = f"%{q.strip().lower()}%"
         query = query.where(User.full_name.ilike(like) | User.student_number.ilike(like))
@@ -462,6 +482,8 @@ def my_feedback_all(user: User = Depends(student_only), db: Session = Depends(ge
 def student_profile_feedback(student_id: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Another student's anonymous peer feedback and instructor comments, all milestones together."""
     _require_public_profiles(db)
+    if student_id != user.id and not (_team_ids(db, user.id) & _team_ids(db, student_id)):
+        raise HTTPException(403, "Feedback profiles are restricted to your assigned teammates")
     target = get_or_404(db, User, student_id, "Student")
     if target.role != Role.STUDENT.value or not target.is_active:
         raise HTTPException(404, "Student not found")
@@ -526,7 +548,7 @@ def dashboard(project_id: str | None = None, user: User = Depends(student_only),
         snap = analytics.snapshot(db, user.id, active.id)
         provisional = {
             "milestone": milestone_out(active),
-            "skills": [{"skill": s.name, "self": s.self_score, "peer_avg": s.peer_avg} for s in snap.skills],
+            "skills": [{"skill": s.name, "self": s.self_score, "peer_avg": s.peer_avg if snap.peer_complete else None} for s in snap.skills],
         }
 
     return {
@@ -558,6 +580,8 @@ def get_report(milestone_id: str, user: User = Depends(student_only), db: Sessio
     rep = db.scalar(select(AIReport).where(AIReport.student_id == user.id, AIReport.milestone_id == milestone_id))
     if not rep:
         raise HTTPException(404, "No report is available for this milestone yet")
+    if not is_current(db, rep):
+        raise HTTPException(409, "Assessment inputs changed; this report must be regenerated")
     return _report_out(rep)
 
 

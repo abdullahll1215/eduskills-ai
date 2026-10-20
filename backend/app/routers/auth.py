@@ -28,11 +28,8 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
 
 @router.get("/auth/signup-options")
 def signup_options(db: Session = Depends(get_db)):
-    """Active projects and their teams, so a new student can join a team while signing up."""
-    return [
-        {"id": p.id, "title": p.title, "teams": [{"id": t.id, "team_name": t.team_name} for t in p.teams]}
-        for p in db.scalars(select(Project).where(Project.is_active.is_(True)).order_by(Project.title))
-    ]
+    """Academic memberships are assigned by staff, never by an unauthenticated registrant."""
+    return []
 
 
 @router.post("/auth/register", status_code=201)
@@ -43,9 +40,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "An account with this email already exists. Sign in instead.")
     team = None
     if body.team_id:
-        team = db.get(Team, body.team_id)
-        if not team or not team.project.is_active:
-            raise HTTPException(400, "The selected team is not available")
+        raise HTTPException(403, "Team membership must be assigned by an instructor")
     user = User(
         full_name=body.full_name.strip(),
         email=email,

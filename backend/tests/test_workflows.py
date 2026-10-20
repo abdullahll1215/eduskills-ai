@@ -183,12 +183,20 @@ def test_profile_update(client):
 
 def test_student_self_registration(client):
     options = client.get("/api/auth/signup-options").json()
-    team = options[0]["teams"][0]
+    assert options == []  # academic teams are not disclosed to unauthenticated registrants
+    staff = login(client, "ahmed@kfu.edu.sa")
+    project_id = client.get("/api/instructor/projects", headers=staff).json()[0]["id"]
+    team = client.get(f"/api/projects/{project_id}", headers=staff).json()["teams"][0]
     body = {"full_name": "New Student", "email": "new.student@student.kfu.edu.sa", "password": "Secret123!", "student_number": "223000001", "team_id": team["id"]}
+    assert client.post("/api/auth/register", json=body).status_code == 403
+    body["team_id"] = None
     r = client.post("/api/auth/register", json=body)
     assert r.status_code == 201 and r.json()["user"]["role"] == "student"
     assert client.post("/api/auth/register", json=body).status_code == 409  # duplicate email
     h = login_as(client, "new.student@student.kfu.edu.sa", "Secret123!")
+    assert client.get("/api/student/projects", headers=h).json() == []
+    assert client.post(f"/api/projects/{project_id}/enrollments", headers=staff,
+        json={"user_id": r.json()["user"]["id"], "team_id": team["id"]}).status_code == 201
     projects = client.get("/api/student/projects", headers=h).json()
     assert projects and projects[0]["team"]["id"] == team["id"]
     r = client.post("/api/auth/register", json={**body, "email": "x@kfu.edu.sa", "password": "short"})
@@ -206,6 +214,7 @@ def test_ai_base_url_must_be_a_url(client, admin):
 
 
 def test_student_directory_and_profile_feedback(client, khalid, admin):
+    client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "true"}})
     results = client.get("/api/student/directory", headers=khalid, params={"q": "saad"}).json()
     assert len(results) == 1 and results[0]["full_name"].startswith("Saad")
     saad = results[0]["id"]

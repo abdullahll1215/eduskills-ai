@@ -25,6 +25,7 @@ from . import audit, nlp
 from .analytics import StudentSnapshot, classify, overall_level, snapshot
 from .locale import current_lang
 from .settings_store import AIConfig, ai_config, scoring
+from .report_state import FINGERPRINT_KEY, input_fingerprint, is_current, lock_student_milestone
 
 logger = logging.getLogger("eduskills.ai")
 
@@ -505,12 +506,16 @@ def recommend_resources(db: Session, snap: StudentSnapshot, limit: int = 4) -> l
 
 def generate_report(db: Session, student_id: str, milestone_id: str, force: bool = False) -> AIReport | None:
     """UC-04 + UC-05 pipeline. Returns None when the 360° data is not complete yet."""
+    lock_student_milestone(db, student_id, milestone_id)
     cfg = scoring(db)
     snap = snapshot(db, student_id, milestone_id, cfg)
-    if not snap.complete:
-        return None
     existing = db.scalar(select(AIReport).where(AIReport.student_id == student_id, AIReport.milestone_id == milestone_id))
-    if existing and not force:
+    if not snap.complete:
+        if existing:
+            db.delete(existing)
+        return None
+    fingerprint = input_fingerprint(db, student_id, milestone_id)
+    if existing and not force and existing.content.get(FINGERPRINT_KEY) == fingerprint:
         return existing
 
     student = db.get(User, student_id)
@@ -531,6 +536,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
     level = overall_level(snap, cfg)
     overall_gap = abs((snap.overall_external or 0) - (snap.overall_self or 0))
     content = {
+        FINGERPRINT_KEY: fingerprint,
         "headline": generated.headline,
         "paragraphs": generated.narrative,
         "strengths": generated.strengths,
@@ -592,7 +598,7 @@ def generate_report(db: Session, student_id: str, milestone_id: str, force: bool
             link=f"/student/report?milestone={milestone_id}",
         )
 
-    if level == BlindSpotLevel.CRITICAL_GAP:
+    if any(s.direction == "overestimate" and s.gap > cfg.critical_threshold for s in snap.skills):
         _raise_auto_intervention(db, snap, milestone, student)
     audit.log(db, None, "report.generated", "ai_report", report.id, f"source={generated.source} level={level.value}")
     return report
@@ -630,6 +636,7 @@ def _arabic_version(db: Session, rep: AIReport) -> dict | None:
 def localized_content(rep: AIReport) -> dict:
     """Report content in the visitor's language. The Arabic text is generated once and stored with the report."""
     content = dict(rep.content or {})
+    content.pop(FINGERPRINT_KEY, None)
     translations = content.pop("i18n", None) or {}
     if current_lang.get() != "ar":
         return content
@@ -639,7 +646,7 @@ def localized_content(rep: AIReport) -> dict:
         arabic = _arabic_version(db, rep) if db else None
         if not arabic:
             return content
-        rep.content = {**content, "i18n": {**translations, "ar": arabic}}
+        rep.content = {**rep.content, "i18n": {**translations, "ar": arabic}}
         try:
             db.commit()
         except Exception:  # noqa: BLE001 - serving the text matters more than caching it
@@ -658,7 +665,7 @@ def _raise_auto_intervention(db: Session, snap: StudentSnapshot, milestone: Mile
     )
     if open_exists:
         return
-    worst = snap.max_gap_skill
+    worst = max((s for s in snap.skills if s.direction == "overestimate"), key=lambda s: s.gap)
     reason = (
         f"Critical blind spot detected in {worst.name} at M{milestone.number}: "
         f"self {worst.self_score} vs external {worst.external:.1f} (delta {worst.gap:.1f})."
@@ -692,7 +699,8 @@ def chat_reply(db: Session, user: User, history: list[dict], message: str) -> tu
 
 
 def _latest_report(db: Session, user: User) -> AIReport | None:
-    return db.scalar(select(AIReport).where(AIReport.student_id == user.id).order_by(AIReport.generated_at.desc()))
+    return next((r for r in db.scalars(select(AIReport).where(AIReport.student_id == user.id)
+        .order_by(AIReport.generated_at.desc())) if is_current(db, r)), None)
 
 
 def _student_context(db: Session, user: User) -> str:
