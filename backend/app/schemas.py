@@ -156,6 +156,10 @@ class EnrollmentIn(BaseModel):
     team_id: str | None = None
 
 
+class ShowcaseIn(BaseModel):
+    password: str | None = Field(None, min_length=8, max_length=128)
+
+
 class SettingsIn(BaseModel):
     values: dict[str, str]
 

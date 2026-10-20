@@ -1,6 +1,7 @@
 """Runtime system configuration (UC-08). Values live in the system_settings table and fall back to defaults."""
 from dataclasses import dataclass
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -32,9 +33,22 @@ DEFAULTS: dict[str, str] = {
 SECRET_KEYS = {"ai_api_key"}
 
 
+# Stored rows stay in the session's identity map, but a key that is not stored would be looked up on every
+# read (a report reads the settings many times), so unset keys are remembered until the transaction ends.
+_UNSET = "settings_unset"
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_unset(session: Session, transaction) -> None:
+    if transaction.parent is None:
+        session.info.pop(_UNSET, None)
+
+
 def get_raw(db: Session, key: str) -> str:
-    row = db.get(SystemSetting, key)
+    unset = db.info.setdefault(_UNSET, set())
+    row = None if key in unset else db.get(SystemSetting, key)
     if row is None:
+        unset.add(key)
         return DEFAULTS.get(key, "")
     return decrypt(row.value) if key in SECRET_KEYS else row.value
 
@@ -43,6 +57,7 @@ def set_value(db: Session, key: str, value: str) -> None:
     if key not in DEFAULTS:
         raise KeyError(key)
     stored = (encrypt(value) or "") if key in SECRET_KEYS else value
+    db.info.get(_UNSET, set()).discard(key)
     row = db.get(SystemSetting, key)
     if row is None:
         db.add(SystemSetting(key=key, value=stored))

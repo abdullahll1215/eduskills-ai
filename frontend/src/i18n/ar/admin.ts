@@ -154,5 +154,14 @@ const dict: Record<string, string> = {
   "Department": "القسم",
   "Data export created. Restore verification is still required. {details}": "تم إنشاء تصدير البيانات. لا يزال التحقق من الاستعادة مطلوبًا. {details}",
   "Restore not verified": "لم يتم التحقق من الاستعادة",
+  "Showcase data": "بيانات العرض",
+  "Add showcase data": "إضافة بيانات العرض",
+  "Add showcase data? A sample course with an instructor, an advisor and eight students (@{domain}) is created. Real courses are not changed.": "إضافة بيانات العرض؟ بيتم إنشاء مقرر تجريبي فيه معلم ومرشد أكاديمي وثمانية طلاب (@{domain}). المقررات الحقيقية ما تتغير.",
+  "Adds a sample graduation-project course with two teams, completed 360° milestones, AI reports, a flagged comment and project files, so every feature can be shown. Its accounts share one password, shown once.": "يضيف مقرر مشروع تخرج تجريبي فيه فريقين ومراحل تقييم 360° مكتملة وتقارير ذكاء اصطناعي وتعليق مُبلّغ عنه وملفات مشاريع، عشان تعرض كل مميزات الموقع. كل الحسابات لها كلمة مرور وحدة تظهر مرة وحدة فقط.",
+  "Showcase data is already added. Change its passwords from Users.": "بيانات العرض مضافة من قبل. تقدر تغيّر كلمات المرور من صفحة المستخدمين.",
+  "Copy the password now. It is not shown again.": "انسخ كلمة المرور الحين، ما راح تظهر مرة ثانية.",
+  "Academic advisor": "المرشد الأكاديمي",
+  "Other student accounts (same password): {emails}": "حسابات الطلاب الثانية (بنفس كلمة المرور): {emails}",
+  "Showcase data already exists. Change its passwords from Users.": "بيانات العرض موجودة من قبل. تقدر تغيّر كلمات المرور من صفحة المستخدمين.",
 };
 export default dict;

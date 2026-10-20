@@ -220,7 +220,7 @@ def test_ai_base_url_must_be_a_url(client, admin):
 
 def test_student_directory_and_profile_feedback(client, khalid, admin):
     client.put("/api/admin/settings", headers=admin, json={"values": {"public_feedback_profiles": "true"}})
-    results = client.get("/api/student/directory", headers=khalid, params={"q": "saad"}).json()
+    results = client.get("/api/student/directory", headers=khalid, params={"q": "222433529"}).json()
     assert len(results) == 1 and results[0]["full_name"].startswith("Saad")
     saad = results[0]["id"]
     r = client.get(f"/api/student/profiles/{saad}/feedback", headers=khalid).json()
