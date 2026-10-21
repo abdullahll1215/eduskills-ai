@@ -5,6 +5,9 @@ import type { Milestone, User } from "../../api/types";
 import { Alert, askConfirm, askText, Empty, Loading, Modal, PageHeader, useFetch } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { useT } from "../../i18n";
+import CoursePicker from "../../components/CoursePicker";
+import { courseByCode } from "../../data/courseCatalog";
+import CourseInstructorAssignment from "../../components/CourseInstructorAssignment";
 import { CopyCode } from "../student/TeamSetup";
 
 interface ProjectFull {
@@ -27,7 +30,7 @@ export default function Projects() {
   const { data: instructors } = useFetch(() => (isAdmin ? api<User[]>("/api/admin/users", { params: { role: "instructor" } }) : Promise.resolve([])), [isAdmin]);
   const [selected, setSelected] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const [newProject, setNewProject] = useState<{ title: string; description: string; instructor_id: string } | null>(null);
+  const [newProject, setNewProject] = useState<{ title: string; description: string; instructor_id: string; course_number: string } | null>(null);
   const [enrollTeam, setEnrollTeam] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const { data: directory } = useFetch(() => (enrollTeam !== null ? api<User[]>("/api/projects/directory/students", { params: { q: search } }) : Promise.resolve([])), [enrollTeam, search]);
@@ -52,7 +55,7 @@ export default function Projects() {
     e.preventDefault();
     if (!newProject) return;
     await run(async () => {
-      const p = await api<ProjectFull>("/api/projects", { body: { ...newProject, instructor_id: newProject.instructor_id || null } });
+      const p = await api<ProjectFull>("/api/projects", { body: { ...newProject, course_number: newProject.course_number || null, instructor_id: newProject.instructor_id || null } });
       setSelected(p.id);
       setNewProject(null);
     }, t("Project created with three default milestones."));
@@ -66,7 +69,7 @@ export default function Projects() {
       <PageHeader
         title={t("Projects & Teams")}
         subtitle={t("Configure projects, evaluation milestones (open/close evaluation periods), teams and enrollments.")}
-        actions={<button className="btn-primary" onClick={() => setNewProject({ title: "", description: "", instructor_id: "" })}><Plus className="h-4 w-4" /> {t("New project")}</button>}
+        actions={<button className="btn-primary" onClick={() => setNewProject({ title: "", description: "", instructor_id: "", course_number: "" })}><Plus className="h-4 w-4" /> {t("New project")}</button>}
       />
       {msg && <Alert kind={msg.kind} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       {!project ? (
@@ -76,7 +79,7 @@ export default function Projects() {
           <div className="flex flex-wrap gap-2">
             {projects!.map((p) => (
               <button key={p.id} onClick={() => setSelected(p.id)} className={`rounded-lg border px-4 py-2 text-sm font-medium ${p.id === project.id ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
-                {p.title} {!p.is_active && t("(inactive)")}
+                {p.title} {!p.is_active && t("(inactive)")} {!p.instructor && <span className="ms-2 inline-flex items-center gap-1.5 text-xs text-amber-800"><span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{t("Needs instructor")}</span>}
               </button>
             ))}
           </div>
@@ -110,6 +113,8 @@ export default function Projects() {
                 </button>
               </div>
             </div>
+
+            {isAdmin && <CourseInstructorAssignment key={`${project.id}:${project.instructor?.id ?? "none"}`} projectId={project.id} currentId={project.instructor?.id ?? null} instructors={instructors ?? []} onSaved={() => { setMsg({ kind: "success", text: t("Instructor assigned. Teams and assessments are unchanged.") }); reload(); }} />}
 
             <h3 className="mt-6 font-semibold text-slate-800">{t("Milestones")}</h3>
             <div className="mt-2 overflow-x-auto">
@@ -197,6 +202,7 @@ export default function Projects() {
       <Modal open={!!newProject} title={t("New project")} onClose={() => setNewProject(null)}>
         {newProject && (
           <form onSubmit={createProject} className="space-y-4">
+            <CoursePicker code={newProject.course_number} required={false} onChange={code => setNewProject({ ...newProject, course_number: code, title: courseByCode(code)?.name_en ?? newProject.title })} />
             <div>
               <label className="label">{t("Title")}</label>
               <input className="input" required value={newProject.title} onChange={(e) => setNewProject({ ...newProject, title: e.target.value })} />

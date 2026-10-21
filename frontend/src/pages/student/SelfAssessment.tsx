@@ -1,5 +1,6 @@
 import { CheckCircle2, Pencil, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Competency, Milestone } from "../../api/types";
 import { Alert, Loading, PageHeader, fmtDate, useFetch } from "../../components/ui";
@@ -15,15 +16,15 @@ interface SelfData {
 export default function SelfAssessment() {
   const t = useT();
   const { milestone, loading: l1, error: e1, reload: reloadProjects } = useStudentMilestone();
-  const [personalMode, setPersonalMode] = useState(false);
-  const personal = personalMode || !milestone;
+  const [params, setParams] = useSearchParams();
+  const personal = params.get("context") === "personal" || !milestone;
   if (l1) return <Loading />;
   if (e1) return <Alert kind="error">{e1}</Alert>;
   return <div>
     <PageHeader title={t("Self-Assessment")} subtitle={t("Rate your own soft skills on a 1–5 Likert scale.")} />
     {milestone && <div className="mb-4">
       <label className="label" htmlFor="assessment-context">{t("Assessment context")}</label>
-      <select id="assessment-context" className="input max-w-md" value={personal ? "personal" : "course"} onChange={(e) => setPersonalMode(e.target.value === "personal")}>
+      <select id="assessment-context" className="input max-w-md" value={personal ? "personal" : "course"} onChange={(e) => { const next = new URLSearchParams(params); next.set("context", e.target.value); setParams(next); }}>
         <option value="course">{t("Course assessment")} · {milestone.name}</option>
         <option value="personal">{t("Personal self-assessment")}</option>
       </select>

@@ -28,10 +28,10 @@ export function useStudentMilestone(prefer: "active" | "latest-report" = "active
   }
 
   useEffect(() => {
-    if (milestone && milestone.id !== requested) setParams({ milestone: milestone.id }, { replace: true });
+    if (milestone && milestone.id !== requested) setParams(current => { const next = new URLSearchParams(current); next.set("milestone", milestone.id); return next; }, { replace: true });
   }, [milestone, requested, setParams]);
 
-  const select = (id: string) => setParams({ milestone: id });
+  const select = (id: string) => setParams(current => { const next = new URLSearchParams(current); next.set("milestone", id); return next; });
   return { projects, project, milestones, milestone, loading, error, reload, select };
 }
 

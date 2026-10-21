@@ -1,0 +1,363 @@
+{
+  "program": "Information Systems — King Faisal University",
+  "sources": [
+    "https://www.kfu.edu.sa/ar/Colleges/Computer_Science/Documents/CoursesMS.pdf",
+    "https://www.kfu.edu.sa/en/Colleges/Computer_Science/Documents/AcademicPlans/CIS-plan-en.pdf"
+  ],
+  "courses": [
+    {
+      "code": "0814132",
+      "name_en": "Physics",
+      "name_ar": "فيزياء",
+      "group": "1"
+    },
+    {
+      "code": "0827111",
+      "name_en": "Calculus",
+      "name_ar": "التفاضل والتكامل",
+      "group": "1"
+    },
+    {
+      "code": "0921110",
+      "name_en": "Introduction to Computing",
+      "name_ar": "مقدمة علم الحاسب",
+      "group": "1"
+    },
+    {
+      "code": "1722111",
+      "name_en": "Academic English",
+      "name_ar": "اللغة الإنجليزية الأكاديمية",
+      "group": "1"
+    },
+    {
+      "code": "1900101",
+      "name_en": "Creed and Doctrines",
+      "name_ar": "العقيدة والمذاهب",
+      "group": "1"
+    },
+    {
+      "code": "0603103",
+      "name_en": "Accounting and Business",
+      "name_ar": "إدارة المحاسبة والأعمال",
+      "group": "1"
+    },
+    {
+      "code": "0826152",
+      "name_en": "Biology",
+      "name_ar": "علم الأحياء",
+      "group": "1"
+    },
+    {
+      "code": "0827121",
+      "name_en": "Statistics and Probability",
+      "name_ar": "الاحتمالات والإحصاء",
+      "group": "1"
+    },
+    {
+      "code": "0827122",
+      "name_en": "Discrete Mathematics",
+      "name_ar": "الرياضيات المنفصلة",
+      "group": "1"
+    },
+    {
+      "code": "0921120",
+      "name_en": "Fundamentals of Programming",
+      "name_ar": "مبادئ البرمجة",
+      "group": "1"
+    },
+    {
+      "code": "0921210",
+      "name_en": "Object Oriented Programming (1)",
+      "name_ar": "البرمجة كائنية التوجه (1)",
+      "group": "2"
+    },
+    {
+      "code": "0921211",
+      "name_en": "Data Structure and Algorithms",
+      "name_ar": "هيكلة البيانات والخوارزميات",
+      "group": "2"
+    },
+    {
+      "code": "0921212",
+      "name_en": "Linear Algebra",
+      "name_ar": "الجبر الخطي",
+      "group": "2"
+    },
+    {
+      "code": "0924214",
+      "name_en": "Fundamentals of Computer Networks",
+      "name_ar": "أساسيات شبكات الحاسب",
+      "group": "2"
+    },
+    {
+      "code": "1900102",
+      "name_en": "Islamic Culture",
+      "name_ar": "الثقافة الإسلامية",
+      "group": "2"
+    },
+    {
+      "code": "0922221",
+      "name_en": "Software Requirements Engineering",
+      "name_ar": "هندسة متطلبات البرمجيات",
+      "group": "2"
+    },
+    {
+      "code": "0922222",
+      "name_en": "Database Concepts and Design",
+      "name_ar": "مفاهيم وتصميم قواعد البيانات",
+      "group": "2"
+    },
+    {
+      "code": "0923223",
+      "name_en": "Digital Logic and Design",
+      "name_ar": "تصميم المنطق الرقمي",
+      "group": "2"
+    },
+    {
+      "code": "0922224",
+      "name_en": "Rapid Application Development",
+      "name_ar": "التطوير السريع للتطبيقات",
+      "group": "2"
+    },
+    {
+      "code": "0922310",
+      "name_en": "Organization and Management",
+      "name_ar": "تنظيم الأعمال والإدارة",
+      "group": "3"
+    },
+    {
+      "code": "0922311",
+      "name_en": "System Analysis and Design",
+      "name_ar": "تحليل وتصميم نظم المعلومات",
+      "group": "3"
+    },
+    {
+      "code": "0922312",
+      "name_en": "Technical Reports",
+      "name_ar": "كتابة التقارير التقنية",
+      "group": "3"
+    },
+    {
+      "code": "0923313",
+      "name_en": "Computer Organization and Architecture",
+      "name_ar": "معمارية وتنظيم الحاسب",
+      "group": "3"
+    },
+    {
+      "code": "0922314",
+      "name_en": "Web-based Systems",
+      "name_ar": "النظم المبنية على الويب",
+      "group": "3"
+    },
+    {
+      "code": "0921320",
+      "name_en": "Computer Security",
+      "name_ar": "أمن الحاسب",
+      "group": "3"
+    },
+    {
+      "code": "0921321",
+      "name_en": "Operating Systems",
+      "name_ar": "نظم التشغيل",
+      "group": "3"
+    },
+    {
+      "code": "0922322",
+      "name_en": "Professional Responsibility",
+      "name_ar": "المسؤولية المهنية",
+      "group": "3"
+    },
+    {
+      "code": "0922323",
+      "name_en": "Database Management Systems",
+      "name_ar": "إدارة وتقييم قواعد البيانات",
+      "group": "3"
+    },
+    {
+      "code": "0922324",
+      "name_en": "IT Project Management",
+      "name_ar": "إدارة مشروع تقنية المعلومات",
+      "group": "3"
+    },
+    {
+      "code": "0922330",
+      "name_en": "Practical (Co-op) Training",
+      "name_ar": "التدريب التعاوني العملي",
+      "group": "summer"
+    },
+    {
+      "code": "0922410",
+      "name_en": "Project Proposal",
+      "name_ar": "مقترح مشروع",
+      "group": "4"
+    },
+    {
+      "code": "0922411",
+      "name_en": "Information Security and Assurance",
+      "name_ar": "أمن وتوكيد المعلومات",
+      "group": "4"
+    },
+    {
+      "code": "0922412",
+      "name_en": "Enterprise Systems",
+      "name_ar": "النظم المؤسسية",
+      "group": "4"
+    },
+    {
+      "code": "0922420",
+      "name_en": "Project Implementation",
+      "name_ar": "تنفيذ مشروع",
+      "group": "4"
+    },
+    {
+      "code": "0922421",
+      "name_en": "Selected Topics in Information Systems",
+      "name_ar": "موضوعات مختارة في نظم المعلومات",
+      "group": "4"
+    },
+    {
+      "code": "0922422",
+      "name_en": "Electronic Business",
+      "name_ar": "الأعمال الإلكترونية",
+      "group": "4"
+    },
+    {
+      "code": "0922414",
+      "name_en": "Mining of Massive Datasets",
+      "name_ar": "تنقيب البيانات الكثيفة",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922415",
+      "name_en": "Data Analytics and Visualization",
+      "name_ar": "تحليلات البيانات وتمثيلها بصريًا",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922416",
+      "name_en": "Web Application Penetration Testing",
+      "name_ar": "اختبار الاختراق لتطبيقات الويب",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922417",
+      "name_en": "Human Computer Interaction",
+      "name_ar": "اتصال الإنسان بالحاسب",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922418",
+      "name_en": "Software Quality Assurance",
+      "name_ar": "توكيد جودة البرمجيات",
+      "group": "program-elective"
+    },
+    {
+      "code": "0921422",
+      "name_en": "Mobile Application Development",
+      "name_ar": "برمجة تطبيقات الأجهزة المتنقلة",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922423",
+      "name_en": "Agile Software Development",
+      "name_ar": "التطوير الرشيق للبرمجيات",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922424",
+      "name_en": "Decision Support Systems",
+      "name_ar": "نظم دعم القرار",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922425",
+      "name_en": "IT Innovation and Entrepreneurship",
+      "name_ar": "ريادة الأعمال والابتكار في تقنية المعلومات",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922426",
+      "name_en": "Information Security Risk Management",
+      "name_ar": "إدارة المخاطر الأمنية للمعلومات",
+      "group": "program-elective"
+    },
+    {
+      "code": "0922427",
+      "name_en": "Information Security Controls and Audit",
+      "name_ar": "التحكم والمراقبة لأمن المعلومات",
+      "group": "program-elective"
+    },
+    {
+      "code": "1900103",
+      "name_en": "Islamic Morals and Occupational Ethics",
+      "name_ar": "الأخلاق الإسلامية وآداب المهنة",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900104",
+      "name_en": "Studies in the Prophet’s Biography",
+      "name_ar": "دراسات في السيرة النبوية",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900105",
+      "name_en": "Medical Jurisprudence",
+      "name_ar": "الفقه الطبي",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900106",
+      "name_en": "Economy and Politics in Islam",
+      "name_ar": "النظام الاقتصادي والسياسي في الإسلام",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900107",
+      "name_en": "Social System and Family Behavior",
+      "name_ar": "النظام الاجتماعي والسلوك الأسري",
+      "group": "university-elective"
+    },
+    {
+      "code": "0602233",
+      "name_en": "Fundamentals of Entrepreneurship",
+      "name_ar": "أساسيات ريادة الأعمال",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900109",
+      "name_en": "Health and Fitness",
+      "name_ar": "الصحة واللياقة",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900110",
+      "name_en": "Research Skills",
+      "name_ar": "مهارات البحث",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900111",
+      "name_en": "Voluntary Work",
+      "name_ar": "العمل التطوعي",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900112",
+      "name_en": "Medicine Type and Usage",
+      "name_ar": "الدواء النوع والاستخدام",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900113",
+      "name_en": "Human Rights in Islam",
+      "name_ar": "حقوق الإنسان في الإسلام",
+      "group": "university-elective"
+    },
+    {
+      "code": "1900114",
+      "name_en": "Food and Nutrition",
+      "name_ar": "الغذاء والتغذية",
+      "group": "university-elective"
+    }
+  ]
+}
