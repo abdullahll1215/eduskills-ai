@@ -256,7 +256,8 @@ function courseNumberOf(raw: unknown): string {
 function teamOut(db: DemoDB, e: any) {
   const p = db.projects.find((x) => x.id === e.project_id)!;
   const t = db.teams.find((x) => x.id === e.team_id);
-  return { project: { id: p.id, title: p.title }, team: t ? { id: t.id, team_name: t.team_name, invite_code: t.invite_code } : null, members: t ? teammates(db, e).map((u: any) => ({ id: u.id, full_name: u.full_name })) : [] };
+  const instructor = db.users.find(u => u.id === p.instructor_id);
+  return { project: { id: p.id, title: p.title, course_number: p.join_code, instructor: instructor ? { id: instructor.id, full_name: instructor.full_name } : null }, team: t ? { id: t.id, team_name: t.team_name, invite_code: t.invite_code } : null, members: t ? teammates(db, e).map((u: any) => ({ id: u.id, full_name: u.full_name })) : [] };
 }
 function placeInTeam(db: DemoDB, user: any, t: any) {
   const p = db.projects.find((x) => x.id === t.project_id)!;
@@ -269,6 +270,13 @@ function placeInTeam(db: DemoDB, user: any, t: any) {
   return e;
 }
 route("GET", "/api/student/team", ({ db, user }) => (studentOnly(user), db.enrollments.filter((e) => e.user_id === user.id).map((e) => teamOut(db, e))));
+route("GET", "/api/student/team/course-preview", ({ db, user, q }) => {
+  studentOnly(user);
+  const number = courseNumberOf(q.get("code"));
+  const p = db.projects.find(x => x.join_code === number);
+  const instructor = p ? db.users.find(u => u.id === p.instructor_id) : null;
+  return { course_number: number, exists: !!p, title: p?.title ?? null, is_active: p?.is_active ?? null, instructor: instructor ? { id: instructor.id, full_name: instructor.full_name } : null };
+});
 route("POST", "/api/student/team/join", ({ db, user, body }) => {
   studentOnly(user);
   const t = findTeamByCode(db, body.code) ?? fail(404, "No team has this invite code");
@@ -283,7 +291,7 @@ route("POST", "/api/student/team/create", ({ db, user, body }) => {
   if (name.length < 2) fail(422, "Please enter a team name");
   let p = db.projects.find((x) => x.join_code === number);
   if (!p) {
-    // A course number nobody has used yet starts a new course; an instructor can be assigned later.
+    if (body.confirm_new_course !== true) fail(409, "This course number is new. Confirm creating a course without an instructor, or check the number.");
     p = { id: uid(), title: `Course ${number}`, description: null, instructor_id: null, is_active: true, join_code: number, created_at: nowIso() };
     db.projects.push(p);
     ["Requirements", "Design", "Implementation"].forEach((n, i) => db.milestones.push({ id: uid(), project_id: p!.id, number: i + 1, name: n, description: null, due_date: null, status: i === 0 ? "active" : "planned" }));
@@ -809,6 +817,15 @@ route("PUT", "/api/projects/:id", ({ db, user, p: params, body }) => {
     p.join_code = courseNumberFree(db, body.course_number, p.id)!;
   }
   if (user.role === "admin" && body.instructor_id) p.instructor_id = body.instructor_id;
+  return projectOut(db, p);
+});
+route("PUT", "/api/projects/:id/instructor", ({ db, user, p: params, body }) => {
+  roleIs(user, "admin");
+  const p = need(db.projects.find(x => x.id === params.id), "Project");
+  const instructor = need(db.users.find(u => u.id === body.instructor_id), "Instructor");
+  if (instructor.role !== "instructor" || !instructor.is_active) fail(422, "Choose an active instructor account");
+  p.instructor_id = instructor.id;
+  log(db, user.id, "project.instructor_assigned", "project", p.id, instructor.id);
   return projectOut(db, p);
 });
 route("DELETE", "/api/projects/:id", ({ db, user, p: params }) => {

@@ -384,8 +384,8 @@ def test_sign_in_portal_matches_the_role(client):
 def test_team_code_is_course_number_and_team_name(client, instructor):
     h = _new_student(client, "newcourse@student.kfu.edu.sa")
     assert client.post("/api/student/team/create", headers=h, json={"course_code": "12ab", "team_name": "X"}).status_code == 422
-    # An unknown course number starts a new course
-    r = client.post("/api/student/team/create", headers=h, json={"course_code": "7531", "team_name": "Team Nova"})
+    # An unknown course number starts a new course after explicit confirmation.
+    r = client.post("/api/student/team/create", headers=h, json={"course_code": "7531", "team_name": "Team Nova", "confirm_new_course": True})
     assert r.status_code == 201 and r.json()["team"]["invite_code"] == "7531-TEAMNOVA"
     assert r.json()["project"]["title"] == "Course 7531"
     projects = client.get("/api/student/projects", headers=h).json()

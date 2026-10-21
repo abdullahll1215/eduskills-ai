@@ -143,12 +143,17 @@ class TeamIn(BaseModel):
 
 
 class JoinTeamIn(BaseModel):
-    code: str = Field(min_length=4, max_length=20)
+    code: str = Field(min_length=4, max_length=60)
 
 
 class CreateTeamIn(BaseModel):
     course_code: str = Field(min_length=4, max_length=20)  # the course number
     team_name: str = Field(min_length=2, max_length=120)
+    confirm_new_course: bool = False
+
+
+class ProjectInstructorIn(BaseModel):
+    instructor_id: str
 
 
 class EnrollmentIn(BaseModel):

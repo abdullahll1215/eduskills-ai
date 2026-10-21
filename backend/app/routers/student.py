@@ -227,7 +227,8 @@ def _team_out(db: Session, enr: Enrollment) -> dict:
     project = db.get(Project, enr.project_id)
     team = db.get(Team, enr.team_id) if enr.team_id else None
     return {
-        "project": {"id": project.id, "title": project.title},
+        "project": {"id": project.id, "title": project.title, "course_number": project.join_code,
+                    "instructor": {"id": project.instructor.id, "full_name": project.instructor.full_name} if project.instructor else None},
         "team": {"id": team.id, "team_name": team.team_name, "invite_code": team.invite_code} if team else None,
         "members": [{"id": u.id, "full_name": u.full_name} for u in teammates(db, enr)] if team else [],
     }
@@ -255,6 +256,18 @@ def my_teams(user: User = Depends(student_only), db: Session = Depends(get_db)):
     return [_team_out(db, e) for e in db.scalars(select(Enrollment).where(Enrollment.user_id == user.id))]
 
 
+@router.get("/team/course-preview")
+def preview_course(code: str, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    number = course_number_of(code)
+    project = db.scalar(select(Project).where(Project.join_code == number))
+    return {
+        "course_number": number, "exists": project is not None,
+        "title": project.title if project else None,
+        "is_active": project.is_active if project else None,
+        "instructor": {"id": project.instructor.id, "full_name": project.instructor.full_name} if project and project.instructor else None,
+    }
+
+
 @router.post("/team/join")
 def join_team(body: JoinTeamIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     team = find_team_by_code(db, body.code)
@@ -273,7 +286,9 @@ def create_team(body: CreateTeamIn, user: User = Depends(student_only), db: Sess
     number = course_number_of(body.course_code)
     project = db.scalar(select(Project).where(Project.join_code == number))
     if not project:
-        # A course number nobody has used yet starts a new course; an instructor can be assigned later.
+        if not body.confirm_new_course:
+            raise HTTPException(409, "This course number is new. Confirm creating a course without an instructor, or check the number.")
+        # Explicit consent creates a flexible workspace; only an admin assigns its instructor.
         project = Project(title=f"Course {number}", join_code=number, is_active=True)
         db.add(project)
         db.flush()

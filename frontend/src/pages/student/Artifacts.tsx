@@ -574,7 +574,7 @@ export default function MyProjects() {
     <div>
       <PageHeader
         title={t("My Projects")}
-        subtitle={t("Your projects and their files. File metadata (commit logs, submission times) is used as objective behavioral evidence; content is never graded.")}
+        subtitle={t("Your coursework, team and evidence of progress, in one place.")}
         actions={
           projects.length > 0 && (
             <>
@@ -588,6 +588,8 @@ export default function MyProjects() {
       <div className="mb-8">
         <TeamSection />
       </div>
+
+      <div className="mb-5"><p className="section-kicker">{t("PROJECT PORTFOLIO")}</p><h2 className="mt-2 text-xl font-semibold text-slate-900">{t("The work behind your progress")}</h2><p className="mt-2 text-sm leading-relaxed text-slate-500">{t("Add projects, deliverables and links. File metadata supports reflection; content is never graded.")}</p></div>
 
       {projects.length === 0 ? (
         <div className="card mx-auto max-w-xl p-6">

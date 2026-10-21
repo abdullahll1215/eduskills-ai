@@ -5,6 +5,7 @@ import type { Milestone, User } from "../../api/types";
 import { Alert, askConfirm, askText, Empty, Loading, Modal, PageHeader, useFetch } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { useT } from "../../i18n";
+import CourseInstructorAssignment from "../../components/CourseInstructorAssignment";
 import { CopyCode } from "../student/TeamSetup";
 
 interface ProjectFull {
@@ -76,7 +77,7 @@ export default function Projects() {
           <div className="flex flex-wrap gap-2">
             {projects!.map((p) => (
               <button key={p.id} onClick={() => setSelected(p.id)} className={`rounded-lg border px-4 py-2 text-sm font-medium ${p.id === project.id ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
-                {p.title} {!p.is_active && t("(inactive)")}
+                {p.title} {!p.is_active && t("(inactive)")} {!p.instructor && <span className="ms-2 inline-flex items-center gap-1.5 text-xs text-amber-800"><span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{t("Needs instructor")}</span>}
               </button>
             ))}
           </div>
@@ -110,6 +111,8 @@ export default function Projects() {
                 </button>
               </div>
             </div>
+
+            {isAdmin && <CourseInstructorAssignment key={`${project.id}:${project.instructor?.id ?? "none"}`} projectId={project.id} currentId={project.instructor?.id ?? null} instructors={instructors ?? []} onSaved={() => { setMsg({ kind: "success", text: t("Instructor assigned. Teams and assessments are unchanged.") }); reload(); }} />}
 
             <h3 className="mt-6 font-semibold text-slate-800">{t("Milestones")}</h3>
             <div className="mt-2 overflow-x-auto">

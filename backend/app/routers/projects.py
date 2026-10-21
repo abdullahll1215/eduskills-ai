@@ -5,9 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..deps import instructor_only
+from ..deps import admin_only, instructor_only
 from ..models import Enrollment, Milestone, Project, Role, Team, User
-from ..schemas import EnrollmentIn, MilestoneIn, ProjectIn, TeamIn
+from ..schemas import EnrollmentIn, MilestoneIn, ProjectIn, ProjectInstructorIn, TeamIn
 from ..services import audit
 from ..services.common import ensure_manage, get_or_404, milestone_out, new_course_number, students_of_project, team_code, user_out
 
@@ -43,6 +43,13 @@ def _ensure_course_number_free(db: Session, number: str, project_id: str | None 
         raise HTTPException(409, "Another course already uses this course number")
 
 
+def _active_instructor(db: Session, instructor_id: str) -> User:
+    user = get_or_404(db, User, instructor_id, "Instructor")
+    if user.role != Role.INSTRUCTOR.value or not user.is_active:
+        raise HTTPException(422, "Choose an active instructor account")
+    return user
+
+
 @router.get("")
 def list_projects(user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     q = select(Project).order_by(Project.created_at.desc())
@@ -61,6 +68,8 @@ def get_project(project_id: str, user: User = Depends(instructor_only), db: Sess
 @router.post("", status_code=201)
 def create_project(body: ProjectIn, user: User = Depends(instructor_only), db: Session = Depends(get_db)):
     instructor_id = body.instructor_id if user.role == Role.ADMIN.value and body.instructor_id else user.id
+    if user.role == Role.ADMIN.value and body.instructor_id and body.instructor_id != user.id:
+        _active_instructor(db, body.instructor_id)
     if body.course_number:
         _ensure_course_number_free(db, body.course_number)
     p = Project(title=body.title, description=body.description, instructor_id=instructor_id, is_active=body.is_active,
@@ -84,8 +93,21 @@ def update_project(project_id: str, body: ProjectIn, user: User = Depends(instru
         _ensure_course_number_free(db, body.course_number, p.id)
         p.join_code = body.course_number
     if user.role == Role.ADMIN.value and body.instructor_id:
+        if body.instructor_id != p.instructor_id:
+            _active_instructor(db, body.instructor_id)
         p.instructor_id = body.instructor_id
     audit.log(db, user, "project.updated", "project", p.id)
+    db.commit()
+    return _project_out(db, p)
+
+
+@router.put("/{project_id}/instructor")
+def assign_instructor(project_id: str, body: ProjectInstructorIn,
+                      user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    p = get_or_404(db, Project, project_id, "Project")
+    instructor = _active_instructor(db, body.instructor_id)
+    p.instructor_id = instructor.id
+    audit.log(db, user, "project.instructor_assigned", "project", p.id, instructor.id)
     db.commit()
     return _project_out(db, p)
 
