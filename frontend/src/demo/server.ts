@@ -4,6 +4,7 @@ import {
   DEFAULTS, commitIndicators, competencies, contentFilter, generateReport, localizedContent, log, nowIso, notify,
   overallLevel, parseGitLog, round, scoring, sentiment, setting, snapshot, summarizeArtifacts, uid,
 } from "./logic";
+import { courseByCode } from "../data/courseCatalog";
 import { sha256 } from "./sha256";
 import { activeModel, aiConfig, chatCompletion } from "./ai";
 
@@ -275,7 +276,7 @@ route("GET", "/api/student/team/course-preview", ({ db, user, q }) => {
   const number = courseNumberOf(q.get("code"));
   const p = db.projects.find(x => x.join_code === number);
   const instructor = p ? db.users.find(u => u.id === p.instructor_id) : null;
-  return { course_number: number, exists: !!p, title: p?.title ?? null, is_active: p?.is_active ?? null, instructor: instructor ? { id: instructor.id, full_name: instructor.full_name } : null };
+  return { course_number: number, exists: !!p, title: p?.title ?? courseByCode(number)?.name_en ?? null, is_active: p?.is_active ?? null, instructor: instructor ? { id: instructor.id, full_name: instructor.full_name } : null };
 });
 route("POST", "/api/student/team/join", ({ db, user, body }) => {
   studentOnly(user);
@@ -292,7 +293,7 @@ route("POST", "/api/student/team/create", ({ db, user, body }) => {
   let p = db.projects.find((x) => x.join_code === number);
   if (!p) {
     if (body.confirm_new_course !== true) fail(409, "This course number is new. Confirm creating a course without an instructor, or check the number.");
-    p = { id: uid(), title: `Course ${number}`, description: null, instructor_id: null, is_active: true, join_code: number, created_at: nowIso() };
+    p = { id: uid(), title: courseByCode(number)?.name_en ?? `Course ${number}`, description: null, instructor_id: null, is_active: true, join_code: number, created_at: nowIso() };
     db.projects.push(p);
     ["Requirements", "Design", "Implementation"].forEach((n, i) => db.milestones.push({ id: uid(), project_id: p!.id, number: i + 1, name: n, description: null, due_date: null, status: i === 0 ? "active" : "planned" }));
   }

@@ -33,6 +33,8 @@ from .models import (
 )
 from .security import encrypt, hash_password, reviewer_hash
 from .services import ai_engine, artifacts, nlp
+from .services.common import new_course_number
+from .services.course_catalog import course_title
 
 DEMO_PASSWORD = "Password123!"
 SHOWCASE_DOMAIN = "demo.example.com"
@@ -211,8 +213,12 @@ def seed_demo(db: Session, password: str = DEMO_PASSWORD, showcase: bool = False
     db.flush()
 
     now = utcnow()
+    number = "0922410" if showcase else "0922420"
+    # A real course already using this number is never repurposed for demo users.
+    join_code = new_course_number(db) if db.scalar(select(Project.id).where(Project.join_code == number)) else number
     project = Project(
-        title="Showcase - Graduation Project IS 2026" if showcase else "Graduation Project - IS 2026",
+        title=f"{'Showcase - ' if showcase else ''}{course_title(number)} · IS 2026",
+        join_code=join_code,
         description="Undergraduate capstone project (CCSIT, King Faisal University). 360° soft-skills assessment per milestone.",
         instructor_id=instructor.id,
     )

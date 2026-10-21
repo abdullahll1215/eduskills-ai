@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Level } from "../api/types";
 import { locale, translate as t } from "../i18n";
 
@@ -131,7 +132,8 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
 
 export function Modal({ open, title, children, onClose, footer }: { open: boolean; title: string; children: ReactNode; onClose: () => void; footer?: ReactNode }) {
   if (!open) return null;
-  return (
+  // Keep overlays outside the animated workspace's transform/stacking context.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -143,7 +145,7 @@ export function Modal({ open, title, children, onClose, footer }: { open: boolea
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>, document.body
   );
 }
 

@@ -36,8 +36,19 @@ export function getDB(): DemoDB {
     /* storage unavailable */
   }
   cache ??= structuredClone(seed) as unknown as DemoDB;
+  alignLegacyDemoCourse(cache);
   groupOrphanArtifacts(cache);
   return cache;
+}
+
+/** Upgrade only the bundled sample's label. Existing shared invite codes and user data survive. */
+function alignLegacyDemoCourse(db: DemoDB) {
+  const sample = seed.projects[0];
+  const course = db.projects.find(p => p.id === sample.id && p.title === "Graduation Project - IS 2026");
+  if (!course) return;
+  course.title = sample.title;
+  // Assign the curriculum number only when this old sample never had a code.
+  if (!course.join_code && !db.projects.some(p => p.id !== course.id && p.join_code === sample.join_code)) course.join_code = sample.join_code;
 }
 
 /** The student's project named after their course project; created on first use (mirrors the backend). */

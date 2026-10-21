@@ -1,5 +1,15 @@
 // Course onboarding and supervision copy.
 const dict: Record<string, string> = {
+  "Find your IS course": "ابحث عن مادة نظم المعلومات",
+  "Search by subject name or number…": "ابحث باسم المادة أو رقمها…",
+  "Arabic or English. Choose a subject to fill its number.": "بالعربي أو الإنجليزي. اختر المادة ليتعبأ رقمها تلقائيًا.",
+  "{n} matching courses": "{n} مادة مطابقة",
+  "IS study-plan courses": "مواد خطة نظم المعلومات",
+  "No matching subject. You can enter a course number below.": "ما لقينا مادة مطابقة. تقدر تدخل رقم الكورس بالأسفل.",
+  "You can also enter a number for a course outside this plan.": "تقدر تدخل رقم مادة خارج هذه الخطة أيضًا.",
+  "Find your subject, then name your team. We will check the course before creating anything.": "اختر مادتك وسمّ فريقك. سنتحقق من الكورس قبل إنشاء أي شيء.",
+  "Enter another number, or leave blank to generate one.": "أدخل رقمًا آخر، أو اتركه فارغًا لتوليد رقم تلقائيًا.",
+  "Subject": "المادة",
   "Copy invite code {code}": "نسخ كود الانضمام {code}",
   "Copy unavailable. Select the code to copy it.": "تعذر النسخ التلقائي. حدد الكود لنسخه.",
   "Supervised by {name}": "بإشراف {name}",

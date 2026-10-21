@@ -31,6 +31,7 @@ from ..models import (
 from ..schemas import ArtifactIn, ChatIn, CommentCheckIn, CreateTeamIn, JoinTeamIn, MembersIn, PeerEvaluationIn, RatingsMixin, SelfAssessmentIn, WorkProjectIn
 from ..security import decrypt, encrypt, reviewer_hash
 from ..services import ai_engine, analytics, artifacts, audit, nlp, passport
+from ..services.course_catalog import course_title
 from ..services.common import competency_out, course_number_of, default_work_project, enrollment_of, find_team_by_code, team_code, get_or_404, milestone_out, teammates, validate_ratings
 from ..services.settings_store import get_raw, scoring
 from ..services.report_state import is_current, lock_student_milestone
@@ -262,7 +263,7 @@ def preview_course(code: str, user: User = Depends(student_only), db: Session = 
     project = db.scalar(select(Project).where(Project.join_code == number))
     return {
         "course_number": number, "exists": project is not None,
-        "title": project.title if project else None,
+        "title": project.title if project else course_title(number),
         "is_active": project.is_active if project else None,
         "instructor": {"id": project.instructor.id, "full_name": project.instructor.full_name} if project and project.instructor else None,
     }
@@ -289,7 +290,7 @@ def create_team(body: CreateTeamIn, user: User = Depends(student_only), db: Sess
         if not body.confirm_new_course:
             raise HTTPException(409, "This course number is new. Confirm creating a course without an instructor, or check the number.")
         # Explicit consent creates a flexible workspace; only an admin assigns its instructor.
-        project = Project(title=f"Course {number}", join_code=number, is_active=True)
+        project = Project(title=course_title(number) or f"Course {number}", join_code=number, is_active=True)
         db.add(project)
         db.flush()
         for i, stage in enumerate(["Requirements", "Design", "Implementation"], start=1):

@@ -11,7 +11,17 @@ This change builds on main `c3eaa49`, including the showcase course, existing-in
 - `PUT /api/projects/{id}/instructor` is admin-only and accepts an active instructor account. It changes the supervisor without replacing milestones, teams, memberships or assessments, and records an audit event. The same role/active-account validation applies to changed assignments through the existing management endpoints; an unchanged legacy admin owner is preserved when editing other course fields.
 - Readable invite codes are accepted up to the existing database limit of 60 characters. Previously the join API and input stopped at 20 characters even when creation produced a longer valid code.
 - The Personal assessment link uses `?context=personal`, and the assessment context survives reloads and milestone URL updates.
-- The in-browser demo API mirrors the new preview, confirmation and assignment routes. Generated standalone demo files are not regenerated in this PR; build:demo was verified locally.
+- The in-browser demo API mirrors the new preview, confirmation and assignment routes. Generated standalone demo files (frontend/demo and docs/index.html) are rebuilt from the updated sources.
+
+## IS catalog and demonstration data
+
+- One versioned JSON catalog (`backend/app/data/is_courses.json`) contains 59 distinct course numbers and Arabic/English subject names, shared by Python and the frontend. It covers required subjects and named electives in the supplied IS plan. Generic elective placeholders have no real course code and are excluded.
+- References: [KFU Arabic plan](https://www.kfu.edu.sa/ar/Colleges/Computer_Science/Documents/CoursesMS.pdf), [KFU English plan](https://www.kfu.edu.sa/en/Colleges/Computer_Science/Documents/AcademicPlans/CIS-plan-en.pdf), and the supplied plan image. This lookup does not certify a student's individual curriculum revision or eligibility, and does not impose prerequisites.
+- Search accepts either language, partial names and Arabic/Latin digits. Selecting an option fills the course number, including its initial zero. The accessible combobox supports arrow keys, Enter and Escape. Editing a search clears the previous selection. Manual course numbers remain available outside the plan.
+- Both student team creation and faculty course creation use the picker. Known catalog numbers receive their canonical English title when a student explicitly confirms a new course. Catalog lookup alone creates no courses or enrollments and grants no supervisor permissions.
+- Fresh backend/browser demo cohorts use Project Implementation (`0922420`); a newly added server showcase uses Project Proposal (`0922410`). Existing real courses are never reused for demo enrollment: occupied preferred numbers fall back to a separate unused demo workspace number. Titles retain the subject name.
+- Existing server courses, accounts and passwords are not rewritten by this release. Existing saved browser demos update only the original bundled sample's unchanged legacy label; their allocated course and invite codes, memberships, evaluations and reports are retained. A sample that never had a code receives the plan number if free. New/reset browser demos use the plan number immediately. No blanket storage reset is performed.
+- The shared modal renders through a body portal so the animated workspace cannot position it behind the navigation header.
 
 ## Visual scope
 
@@ -22,10 +32,11 @@ Multiple-course academic navigation remains outside this change: the existing st
 ## Validation
 
 - Baseline before changes: 78 SQLite tests passed, one PostgreSQL-only test skipped; production frontend build passed.
-- Updated full PostgreSQL suite: 87 passed; initial SQL protection, migration replay and concurrent startup checks passed on disposable databases. An existing Starlette/httpx deprecation warning remains.
+- Updated full PostgreSQL suite: 91 passed, including real-course preservation when a showcase number is occupied; initial SQL protection, migration replay and concurrent startup checks passed on disposable databases. An existing Starlette/httpx deprecation warning remains.
 - Ruff static checks and TypeScript/Vite production build passed.
 - Standalone demo build passed, with its existing large-single-bundle warning.
 - Real local browser flow: preview and cancellation write nothing; confirmed creation persists; pending supervision is visible; admin assignment preserves team/milestone data; assigned course appears to its instructor; another student can join by invite code; personal assessment remains independent; Arabic mobile view has no document overflow in the checked view; no page errors in the checked scenario.
+- Catalog browser check: eleven scenarios passed, covering bilingual search, Arabic digits, keyboard selection, stale-selection clearing, manual entry, confirmation/cancellation, Arabic mobile creation, faculty creation, built demo membership and preservation of saved demo data.
 - A separate browser check verifies the personal-assessment link opens personal mode and preserves it after reload.
 
 Local evidence is in `.artifacts/course-experience/` (ignored). All browser accounts and writes are against disposable local demonstration data. These checks do not certify a production deployment or a full security audit.

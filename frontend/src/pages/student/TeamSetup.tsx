@@ -3,7 +3,9 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { Alert, useFetch } from "../../components/ui";
-import { useT } from "../../i18n";
+import { useLang, useT } from "../../i18n";
+import CoursePicker from "../../components/CoursePicker";
+import { courseByCode, courseName } from "../../data/courseCatalog";
 
 export interface MyTeam {
   project: { id: string; title: string; course_number?: string | null; instructor?: { id: string; full_name: string } | null };
@@ -17,7 +19,7 @@ interface CoursePreview {
   is_active: boolean | null;
   instructor: { id: string; full_name: string } | null;
 }
-interface TeamDraft { course_code: string; team_name: string }
+interface TeamDraft { course_code: string; team_name: string; course_title?: string | null }
 
 export function CopyCode({ code }: { code: string }) {
   const t = useT();
@@ -84,6 +86,9 @@ function JoinCard({ onJoined }: { onJoined: () => Promise<void> }) {
 /** Native dialog contains keyboard focus and restores it when dismissed. */
 function ConfirmNewCourse({ draft, busy, error, onCancel, onConfirm }: { draft: TeamDraft | null; busy: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
   const t = useT();
+  const { lang } = useLang();
+  const course = draft ? courseByCode(draft.course_code) : undefined;
+  const title = course ? courseName(course, lang) : draft?.course_title;
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (draft) ref.current?.showModal();
@@ -94,7 +99,7 @@ function ConfirmNewCourse({ draft, busy, error, onCancel, onConfirm }: { draft: 
     <p className="section-kicker">{t("Check before you create")}</p>
     <h2 id="new-course-title">{t("Start a new course?")}</h2>
     <p id="new-course-description">{t("Course {number} is not on the platform yet. Check the number, or create it with your team.", { number: draft?.course_code ?? "" })}</p>
-    <dl className="course-confirm-summary"><div><dt>{t("Course number")}</dt><dd dir="ltr">{draft?.course_code}</dd></div><div><dt>{t("Team name")}</dt><dd>{draft?.team_name}</dd></div></dl>
+    <dl className="course-confirm-summary">{title && <div><dt>{t("Subject")}</dt><dd>{title}</dd></div>}<div><dt>{t("Course number")}</dt><dd dir="ltr">{draft?.course_code}</dd></div><div><dt>{t("Team name")}</dt><dd>{draft?.team_name}</dd></div></dl>
     <CourseSupervision instructor={null} />
     <p className="course-confirm-note">{t("Your academic report will need an assigned instructor and complete assessments.")}</p>
     {error && <div role="alert"><Alert kind="error">{error}</Alert></div>}
@@ -111,7 +116,7 @@ function CreateCard({ onCreated }: { onCreated: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const create = async (value: TeamDraft, confirmed: boolean) => {
     setBusy(true); setError(null);
-    try { await api<MyTeam>("/api/student/team/create", { body: { ...value, confirm_new_course: confirmed } }); setDraft(null); await onCreated(); }
+    try { await api<MyTeam>("/api/student/team/create", { body: { course_code: value.course_code, team_name: value.team_name, confirm_new_course: confirmed } }); setDraft(null); await onCreated(); }
     catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
@@ -119,7 +124,7 @@ function CreateCard({ onCreated }: { onCreated: () => Promise<void> }) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
       const preview = await api<CoursePreview>("/api/student/team/course-preview", { params: { code: courseCode } });
-      const value = { course_code: preview.course_number, team_name: name.trim() };
+      const value = { course_code: preview.course_number, team_name: name.trim(), course_title: preview.title };
       if (!preview.exists) setDraft(value);
       else if (!preview.is_active) setError(t("This course is no longer active"));
       else await create(value, false);
@@ -129,11 +134,11 @@ function CreateCard({ onCreated }: { onCreated: () => Promise<void> }) {
   return <>
     <form onSubmit={submit} className="course-entry-form">
       <div className="course-form-index"><span>02</span><Plus size={19} aria-hidden="true" /></div>
-      <h3>{t("Starting your team?")}</h3><p className="course-form-description">{t("Use your course number. We will check it before creating anything.")}</p>
+      <h3>{t("Starting your team?")}</h3><p className="course-form-description">{t("Find your subject, then name your team. We will check the course before creating anything.")}</p>
       <div className="course-form-fields">
         {error && !draft && <div role="alert"><Alert kind="error">{error}</Alert></div>}
-        <div className="course-create-fields"><div><label className="label" htmlFor="team-course-number">{t("Course number")}</label><input id="team-course-number" name="course_number" className="input course-number-input" dir="ltr" required inputMode="numeric" pattern="[0-9 -]{4,14}" maxLength={14} autoComplete="off" spellCheck={false} value={courseCode} onChange={e => setCourseCode(e.target.value)} placeholder="1234" /></div>
-          <div><label className="label" htmlFor="new-team-name">{t("Team name")}</label><input id="new-team-name" name="team_name" className="input" required minLength={2} maxLength={120} value={name} onChange={e => setName(e.target.value)} placeholder={t("e.g. Team Gamma")} /></div></div>
+        <CoursePicker code={courseCode} onChange={setCourseCode} />
+        <div className="course-team-name-field"><label className="label" htmlFor="new-team-name">{t("Team name")}</label><input id="new-team-name" name="team_name" className="input" required minLength={2} maxLength={120} value={name} onChange={e => setName(e.target.value)} placeholder={t("e.g. Team Gamma")} /></div>
         <p className="course-field-hint">{t("New course numbers need your confirmation. Existing courses keep their instructor.")}</p>
       </div>
       <button className="btn-outline w-full" disabled={busy}>{busy && <Loader2 size={17} className="animate-spin" aria-hidden="true" />}{t("Review course & team")}</button>

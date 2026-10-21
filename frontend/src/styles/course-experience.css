@@ -55,3 +55,21 @@
 [dir="rtl"] .course-section-heading h2, [dir="rtl"] .course-confirm h2, [dir="rtl"] .course-entry-form h3 { letter-spacing: 0; line-height: 1.6; }
 @media (max-width:767px) { .course-entry-options { grid-template-columns: 1fr; } .course-entry-form + .course-entry-form { border-inline-start: 0; border-top: 1px solid var(--rule); } .course-section-heading, .course-entry-form { padding: 25px 22px; } .course-explore-note { padding: 16px 22px; } .course-workspace > .course-memberships { padding: 20px; } .course-section-heading h2 { font-size: 24px; } .course-instructor-control form { flex-wrap: wrap; } }
 @media (max-width:399px) { .course-create-fields { grid-template-columns: 1fr; } .course-confirm { padding: 24px; } .course-confirm-actions > button { width: 100%; } .course-membership-heading { flex-wrap: wrap; } }
+.course-picker { position: relative; }
+.course-search-wrap { position: relative; }
+.course-search-wrap > svg { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.course-search-wrap .input { padding-inline-start: 38px; }
+.course-number-label { margin-top: 18px; }
+.course-team-name-field { margin-top: 20px; }
+.course-search-panel { position: absolute; z-index: 20; inset-inline: 0; top: 78px; border: 1px solid var(--rule); border-radius: 9px; background: var(--paper); box-shadow: 0 12px 28px #142e2618; overflow: hidden; }
+.course-search-caption { padding: 9px 13px; border-bottom: 1px solid var(--rule); font-size: 10px; color: var(--muted); background: var(--course-soft); }
+.course-search-panel ul { max-height: 275px; overflow-y: auto; overscroll-behavior: contain; }
+.course-search-panel li { display: flex; align-items: center; gap: 10px; padding: 12px 13px; cursor: pointer; border-bottom: 1px solid var(--rule); min-height: 60px; }
+.course-search-panel li:last-child { border: 0; }
+.course-search-panel li:hover, .course-search-panel li.is-active { background: var(--course-soft); }
+.course-search-panel li[aria-selected="true"] { color: var(--accent); }
+.course-search-panel li > div { flex: 1; min-width: 0; }
+.course-search-panel strong { display: block; font-size: 12px; line-height: 1.7; font-weight: 600; }
+.course-search-panel li span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.course-search-panel code { font-size: 11px; color: var(--accent); flex-shrink: 0; }
+.course-search-empty { padding: 16px; font-size: 12px; color: var(--muted); line-height: 1.8; }
