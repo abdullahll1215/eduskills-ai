@@ -1,5 +1,5 @@
 # EduSkills AI — AI-Driven Soft Skills Assessment and Development System
-\\test
+
 نظام ذكي لتقييم وتطوير المهارات الناعمة لطلاب البكالوريوس — مشروع تخرج، كلية علوم الحاسب وتقنية المعلومات، جامعة الملك فيصل.
 
 The system combines **self, anonymous peer and instructor evaluations (360°)**, computes a weighted
